@@ -33,3 +33,18 @@ nrow(test)
 train_data$duration <- c()
 ```
 
+#GLMNET Model
+# Prepare the data for glmnet
+x <- model.matrix(y ~ . - 1, data = train_data) # The '-1' removes the intercept
+y <- train_data$y
+
+# Fit the glmnet model
+cv.glmnet.model <- cv.glmnet(x, y, family = "binomial", alpha = 1)
+
+# Look at the results to determine the best lambda
+plot(cv.glmnet.model)
+
+# Look at the coefficients for the best lambda value
+coef(cv.glmnet.model, s = "lambda.min")
+
+
