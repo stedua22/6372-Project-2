@@ -35,6 +35,61 @@ train_data$duration <- c()
 
 ## Look at summary statistics for numeric variables
 There are several numeric variables where we can look at the min/max, quartiles, median, and mean.
+```{r}
+summary(train_data$age)
+summary(train_data$campaign)
+summary(train_data$pdays)
+summary(train_data$previous)
+summary(train_data$emp.var.rate)
+summary(train_data$cons.price.idx)
+summary(train_data$cons.conf.idx)
+summary(train_data$euribor3m)
+summary(train_data$nr.employed)
+```
+
+## Look at summary statistics for categorical variables
+There are several categorical variables.  Summary statistics don't make as much sense for them, but you can look at the distribution of values in the different categories.
+```{r}
+summary(train_data$job)
+summary(summary(train_data$job))
+length(summary(train_data$job))
+
+summary(train_data$marital)
+summary(summary(train_data$marital))
+length(summary(train_data$marital))
+
+summary(train_data$education)
+summary(summary(train_data$education))
+length(summary(train_data$education))
+
+summary(train_data$default)
+summary(summary(train_data$default))
+length(summary(train_data$default))
+
+summary(train_data$housing)
+summary(summary(train_data$housing))
+length(summary(train_data$housing))
+
+summary(train_data$loan)
+summary(summary(train_data$loan))
+length(summary(train_data$loan))
+
+summary(train_data$contact)
+summary(summary(train_data$contact))
+length(summary(train_data$contact))
+
+summary(train_data$month)
+summary(summary(train_data$month))
+length(summary(train_data$month))
+
+summary(train_data$day_of_week)
+summary(summary(train_data$day_of_week))
+length(summary(train_data$day_of_week))
+
+summary(train_data$poutcome)
+summary(summary(train_data$poutcome))
+length(summary(train_data$poutcome))
+```
 
 ## Examine bank client data
 The dataset includes age, job, marital, education, default, housing, and loan columns, which were identified as client data.
@@ -73,6 +128,28 @@ summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(tra
 summary %>% ggplot(aes(x=marital,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
   ylab('Percentage') + xlab('Marital') + ggtitle('Marital Percentages Based on Y Value') + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot default
+summary <- train_data %>%
+  group_by(default,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=default,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Default') + ggtitle('Default Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot housing
+summary <- train_data %>%
+  group_by(housing,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=housing,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Housing') + ggtitle('Housing Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 <br/>
-None of these variables appear to show any strong indicator for yes or no.  It looks like higher ages tend to lean more towards yes, and certain jobs (Ex: admin) lean more towards yes.  But none of these variables look particularly strong.
+None of these variables appear to show any strong indicator for yes or no.  It looks like higher ages tend to lean more towards yes, and certain jobs (Ex: admin) lean more towards yes.  When Y = no, there are more about double the unknown values, but still far under 50%.
