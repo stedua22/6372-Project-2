@@ -1,0 +1,119 @@
+---
+title: "Untitled"
+author: 'MSDS 6372: Stephanie Duarte'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Load Data
+library(readr)
+data <- read_csv("C:/Users/Steph/OneDrive/Documents/MSDS_6372/Project 2/bank-additional-full.csv")
+
+
+
+#EDA
+ggplot(data) +   
+  geom_bar(mapping = aes(x=job, fill = y)) +   
+  coord_flip() +     #Added coord flip here to make it more readable
+  ggtitle("Number of 'y' by job") +  
+  ylab("Count") +   
+  xlab("Job")
+
+Admin, technician and blue collar jobs are the top 3 subscribers by volume 
+
+df2 <- data %>%  
+  group_by(job) %>%  
+  count(y) %>%  
+  mutate(job_conv = n/sum(n)) %>%  
+  filter(y == "yes")
+
+ggplot(df2, aes(x=job, y=job_conv)) +  
+  geom_point() +  
+  coord_flip() 
+
+
+Above, I looked at the ratio of "yes" vs "no" and see that students and retired persons convert at much higher rates than those of other professions. And 'blue collar' has the lowest conversion rate
+
+So, if they were to want to improve the cost effectiveness of their campaigns they might want to target more 'students' and 'retirees'
+
+
+
+
+
+
+
+# Split into training and test
+data$month <- factor(data$month, levels=c('mar','apr','may','jun','jul','aug','sep','oct','nov','dec'))
+set.seed(1234)
+train_perc <- .8
+# train_index <- createDataPartition(data$y, p = train_perc, list = FALSE)
+train_indices <- sample(nrow(data), floor(train_perc * nrow(data)))
+train_data <- data[train_indices, ] # 32950
+test_data <- data[-train_indices, ] # 8238
+train_data$duration <- c()
+yes_data <- train_data[train_data$y == 'yes',] # 3712
+no_data <- train_data[train_data$y == 'no',] # 29239
+yes_data_test <- test_data[test_data$y == 'yes',] # 928
+no_data_test <- test_data[test_data$y == 'no',] # 7309
+
+
+
+# Set indicator variables
+train_data$default_unk <- 'no'
+train_data$default_unk[train_data$default=='unknown'] <- 'yes'
+train_data$default_unk <- as.factor(train_data$default_unk)
+train_data$campaign_1 <- 0
+train_data$campaign_1[train_data$campaign==1] <- 1
+train_data$pdays_999 <- 0
+train_data$pdays_999[train_data$pdays==999] <- 1
+train_data$previous_0 <- 0
+train_data$previous_0[train_data$previous==0] <- 1
+train_data$poutcome_non <- 'no'
+train_data$poutcome_non[train_data$poutcome=='nonexistent'] <- 'yes'
+train_data$poutcome_non <- as.factor(train_data$poutcome_non)
+
+
+train_data$y <- as.numeric(train_data$y == "yes")  # Convert to 1 for "yes" and 0 for "no"
+
+# Logistic Regression
+mod <- glm(y ~ age + job + marital + education + default * default_unk + housing + loan + 
+           campaign * campaign_1 + pdays * pdays_999 + previous * previous_0 + 
+           poutcome * poutcome_non + emp.var.rate + cons.price.idx + cons.conf.idx + 
+           euribor3m + nr.employed,
+           data = train_data,
+           family = "binomial")
+
+summary(mod)
+
+
+# Prepare the data for glmnet
+x <- model.matrix(y ~ . - 1, data = train_data) # The '-1' removes the intercept
+y <- train_data$y
+
+# Fit the glmnet model
+cv.glmnet.model <- cv.glmnet(x, y, family = "binomial", alpha = 1)
+
+# Look at the results to determine the best lambda
+plot(cv.glmnet.model)
+
+# Look at the coefficients for the best lambda value
+coef(cv.glmnet.model, s = "lambda.min")
+
+Variables with larger absolute coefficients are more significant in the sense that they have a stronger relationship with the response variable in the context of this model. For example, jobretired has a positive coefficient of about 0.6565, suggesting a strong positive relationship with the likelihood of y being 1 in the context of the other variables in the model.
+
+
+
+
+
+
+
+
+
+
+
+
