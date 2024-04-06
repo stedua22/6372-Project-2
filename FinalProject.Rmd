@@ -33,7 +33,7 @@ nrow(test)
 train_data$duration <- c()
 ```
 
-#GLMNET Model
+# GLMNET Model
 # Prepare the data for glmnet
 x <- model.matrix(y ~ . - 1, data = train_data) # The '-1' removes the intercept
 y <- train_data$y
