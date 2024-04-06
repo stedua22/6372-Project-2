@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # EDA
-The first thing that is done when you get a dataset is to peform an Exploratory Data Anslysis, to see what characteristics the data has.
+The first thing that is done when you get a dataset is to peform an Exploratory Data Anslysis, to see what characteristics the data has.  The variable we are trying to predict is the y column whic represents if the client has subscribed to a term deposit.  The possible values are "yes" or "no".
 
 ## Create training and test set
 Going forward, we will use the training set for all analysis and model building.  The test set will be used at the end to get metrics for the various models we create.
@@ -29,22 +29,50 @@ train_indices <- sample(nrow(data), floor(train_perc * nrow(data)))
 train_data <- data[train_indices, ]
 nrow(train_data)
 test_data <- data[-train_indices, ] 
-nrow(test)
+nrow(test_data)
 train_data$duration <- c()
 ```
 
-# GLMNET Model
-# Prepare the data for glmnet
-x <- model.matrix(y ~ . - 1, data = train_data) # The '-1' removes the intercept
-y <- train_data$y
+## Look at summary statistics for numeric variables
+There are several numeric variables where we can look at the min/max, quartiles, median, and mean.
 
-# Fit the glmnet model
-cv.glmnet.model <- cv.glmnet(x, y, family = "binomial", alpha = 1)
+## Examine bank client data
+The dataset includes age, job, marital, education, default, housing, and loan columns, which were identified as client data.
 
-# Look at the results to determine the best lambda
-plot(cv.glmnet.model)
+```{r}
+library(tidyverse)
 
-# Look at the coefficients for the best lambda value
-coef(cv.glmnet.model, s = "lambda.min")
+# Plot age
+summary <- train_data %>%
+  group_by(age,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=age,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Age') + ggtitle('Age Distribution Based on Y Value')
 
+# Plot job
+summary <- train_data %>%
+  group_by(job,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=job,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Job') + ggtitle('Job Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+# Plot marital
+summary <- train_data %>%
+  group_by(marital,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=marital,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Marital') + ggtitle('Marital Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+<br/>
+None of these variables appear to show any strong indicator for yes or no.  It looks like higher ages tend to lean more towards yes, and certain jobs (Ex: admin) lean more towards yes.  But none of these variables look particularly strong.
