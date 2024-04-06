@@ -1,0 +1,167 @@
+---
+title: "Untitled"
+author: 'MSDS 6372: Stephanie Duarte'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Load Data
+library(readr)
+data <- read_csv("C:/Users/Steph/OneDrive/Documents/MSDS_6372/Project 2/bank-additional-full.csv")
+
+
+
+#EDA
+
+### Analyzing campaign
+
+ggplot(train_data) +   
+  geom_histogram(mapping = aes(x=campaign, fill=y)) +  
+  ggtitle("Distribution of 'y' by campaign")
+
+### Analyzing JOB
+
+ggplot(train_data) +   
+  geom_bar(mapping = aes(x=job, fill = y)) +   
+  coord_flip() +     #Added coord flip here to make it more readable
+  ggtitle("Number of 'y' by job") +  
+  ylab("Count") +   
+  xlab("Job")
+
+Admin, technician and blue collar jobs are the top 3 subscribers by volume 
+
+df2 <- train_data %>%  
+  group_by(job) %>%  
+  count(y) %>%  
+  mutate(job_conv = n/sum(n)) %>%  
+  filter(y == "yes")
+
+ggplot(df2, aes(x=job, y=job_conv)) +  
+  geom_point() +  
+  coord_flip() 
+
+
+Above, I looked at the ratio of "yes" vs "no" and see that students and retired persons convert at much higher rates than those of other professions. And 'blue collar' has the lowest conversion rate
+
+So, if they were to want to improve the cost effectiveness of their campaigns they might want to target more 'students' and 'retirees'
+
+### Analyzing By Month
+
+ggplot(train_data) + 
+  geom_bar(mapping = aes(x=month, fill = y)) + 
+  ggtitle("Number of 'y' by month") +
+  ylab("Cnt") + xlab("month")
+
+#Education
+ggplot(train_data, aes(x = education, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Distribution of 'y' by Education") +  
+  ylab("Proportion") + 
+  xlab("Education Level")
+  
+#Age
+ggplot(train_data) + 
+  geom_bar(mapping = aes(x=age, fill = y)) + 
+  ggtitle("Distribution of 'y' by Age_Grp") +  
+  ylab("Cnt") + 
+  xlab("Age Group")
+
+# by nr.employed
+ggplot(train_data) + geom_histogram(mapping = aes(x = nr.employed, fill = y)) +
+  ggtitle("Distribution of 'y' by nr.employed")
+
+# Euribor 3 month rate
+ggplot(train_data, aes(x = month , y = euribor3m, fill = y)) +  
+  geom_boxplot() +   
+  ggtitle("euribor3m by month")
+
+ggplot(train_data) + geom_histogram(mapping = aes(x = euribor3m, fill = y)) +
+  ggtitle("Distribution of euribor3m by month")
+
+
+# Split into training and test
+data$month <- factor(data$month, levels=c('mar','apr','may','jun','jul','aug','sep','oct','nov','dec'))
+set.seed(1234)
+train_perc <- .8
+# train_index <- createDataPartition(data$y, p = train_perc, list = FALSE)
+train_indices <- sample(nrow(data), floor(train_perc * nrow(data)))
+train_data <- data[train_indices, ] # 32950
+test_data <- data[-train_indices, ] # 8238
+train_data$duration <- c()
+yes_data <- train_data[train_data$y == 'yes',] # 3712
+no_data <- train_data[train_data$y == 'no',] # 29239
+yes_data_test <- test_data[test_data$y == 'yes',] # 928
+no_data_test <- test_data[test_data$y == 'no',] # 7309
+
+
+
+# Set indicator variables
+train_data$default_unk <- 'no'
+train_data$default_unk[train_data$default=='unknown'] <- 'yes'
+train_data$default_unk <- as.factor(train_data$default_unk)
+train_data$campaign_1 <- 0
+train_data$campaign_1[train_data$campaign==1] <- 1
+train_data$pdays_999 <- 0
+train_data$pdays_999[train_data$pdays==999] <- 1
+train_data$previous_0 <- 0
+train_data$previous_0[train_data$previous==0] <- 1
+train_data$poutcome_non <- 'no'
+train_data$poutcome_non[train_data$poutcome=='nonexistent'] <- 'yes'
+train_data$poutcome_non <- as.factor(train_data$poutcome_non)
+
+
+train_data$y <- as.numeric(train_data$y == "yes")  # Convert to 1 for "yes" and 0 for "no"
+
+# Logistic Regression
+mod <- glm(y ~ age + job + marital + education + default * default_unk + housing + loan + 
+           campaign * campaign_1 + pdays * pdays_999 + previous * previous_0 + 
+           poutcome * poutcome_non + emp.var.rate + cons.price.idx + cons.conf.idx + 
+           euribor3m + nr.employed,
+           data = train_data,
+           family = "binomial")
+
+summary(mod)
+
+
+# Convert the binary outcome to a factor
+train_data$y <- as.factor(train_data$y)
+
+# Prepare the matrix of predictors
+x <- model.matrix(~ . - 1 - y, data = train_data) # Excludes the intercept and the response variable
+
+# Define the trainControl with classProbs enabled
+fitControl <- trainControl(method = "cv", 
+                           number = 10, 
+                           classProbs = TRUE, # Enable class probability predictions
+                           summaryFunction = twoClassSummary) # Use a summary function for classification
+
+# Run the glmnet model
+set.seed(1234) # for reproducibility
+glmnet_fit <- train(x, y = train_data$y, 
+                    method = "glmnet",
+                    trControl = fitControl,
+                    tuneLength = 10, # Number of lambda values to test
+                    metric = "ROC") # Optimize the model based on ROC curve
+
+# View the best model's lambda value and corresponding coefficients
+best_lambda <- glmnet_fit$bestTune$lambda
+coef(glmnet_fit$finalModel, s = best_lambda)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
