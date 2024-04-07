@@ -21,6 +21,7 @@ data<-read.csv("C:/Users/aabro/OneDrive/Desktop/SMU Program/Classes/Stats 2/Fina
 # Set levels to use for later
 data$y <- relevel(data$y, ref="yes")
 data$month <- factor(data$month, levels=c('mar','apr','may','jun','jul','aug','sep','oct','nov','dec'))
+data$day_of_week <- factor(data$day_of_week, levels=c('mon','tue','wed','thu','fri'))
 
 # Create the train and test split
 train_perc <- .8
@@ -153,3 +154,67 @@ summary %>% ggplot(aes(x=housing,y=perc,fill=y)) + geom_bar(stat="identity") + f
 ```
 <br/>
 None of these variables appear to show any strong indicator for yes or no.  It looks like higher ages tend to lean more towards yes, and certain jobs (Ex: admin) lean more towards yes.  When Y = no, there are more about double the unknown values, but still far under 50%.
+
+## Examine data related with the last contact of the current campaign
+The dataset includes contact communication type, month of contact, and day of week of contac, for the last contact of the current campaign to sell term deposits.
+```{r}
+# Plot contact
+summary <- train_data %>%
+  group_by(contact,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=contact,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Contact') + ggtitle('Contact Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot month
+summary <- train_data %>%
+  group_by(month,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=month,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Month') + ggtitle('Month Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot day of week
+summary <- train_data %>%
+  group_by(day_of_week,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=day_of_week,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Day of Week') + ggtitle('Day of Week Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+If y is Yes, there are ~20% more likely to be contacted on your cell phone than on landline.  There are certain months that also seem to have more term deposit sales in them.  Day of week looks to not have much change.
+
+## Examine other data related with the current campaign or previous campaigns
+```{r}
+# Plot campaign
+summary <- train_data %>%
+  group_by(campaign,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=campaign,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Campaign') + ggtitle('Campaign Distribution Based on Y Value') + xlim(c(0,20))
+
+# Plot poutcome
+summary <- train_data %>%
+  group_by(poutcome,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=poutcome,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Poutcome') + ggtitle('Poutcome Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+Campaign distributions seem pretty similar between Yes and No.  For Poutcome, success is more common for the yes than for no.
+
