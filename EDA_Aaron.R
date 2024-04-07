@@ -2,6 +2,7 @@
 
 # Packages
 library(tidyverse)
+library(GGally)
 
 # Pull in Data
 data<-read.csv("C:/Users/aabro/OneDrive/Desktop/SMU Program/Classes/Stats 2/Final Project/bank-full.csv",stringsAsFactors = T, sep=";")
@@ -404,3 +405,285 @@ ggplot(df, aes(x = factor, y = Freq)) +
   labs(title = "Poutcome for Yes", x = "Factor", y = "Percentage") +
   theme_minimal() + ylim(c(0,100)) + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+################################################################################
+# Now that we did some forward / backward selection, we can try to make some plots.
+# We wanted: good plot, bad plot, categorical, numeric, campaign, socio-economic, normal
+# Here are some that fit: 
+# nr.employed (socio-economic, good, numeric)
+# month (campaign, good, categorical)
+# poutcome (previous campaign, good, categorical)
+# age (client data, bad, numeric)
+
+# For EDA in the RMD file, we should probably have some others.
+# Job, just to show that it isn't worthwhile
+# Campaign
+# cons.price.idx = monthly indicator
+# euribor3m = daily indicator
+
+# Pull in data
+data<-read.csv("C:/Users/aabro/OneDrive/Desktop/SMU Program/Classes/Stats 2/Final Project/bank-additional-full.csv",stringsAsFactors = T, sep=";")
+data$y <- relevel(data$y, ref="yes")
+data$month <- factor(data$month, levels=c('mar','apr','may','jun','jul','aug','sep','oct','nov','dec'))
+data$day_of_week <- factor(data$day_of_week, levels=c('mon','tue','wed','thu','fri'))
+train_perc <- .8
+set.seed(1234)
+# train_index <- createDataPartition(data$y, p = train_perc, list = FALSE)
+train_indices <- sample(nrow(data), floor(train_perc * nrow(data)))
+train_data <- data[train_indices, ] # 32950
+test_data <- data[-train_indices, ] # 8238
+train_data$duration <- c()
+
+# Plot age
+summary <- train_data %>%
+  group_by(age,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+train_data %>% ggplot(aes(x=age,fill=y)) + geom_histogram() + facet_wrap(~y)
+summary %>% ggplot(aes(x=age,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Age') + ggtitle('Age Distribution Based on Y Value')
+
+# Plot job
+summary <- train_data %>%
+  group_by(job,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=job,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Job') + ggtitle('Job Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot marital
+summary <- train_data %>%
+  group_by(marital,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=marital,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Marital') + ggtitle('Marital Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot default
+summary <- train_data %>%
+  group_by(default,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=default,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Default') + ggtitle('Default Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot housing
+summary <- train_data %>%
+  group_by(housing,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=housing,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Housing') + ggtitle('Housing Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot contact
+summary <- train_data %>%
+  group_by(contact,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=contact,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Contact') + ggtitle('Contact Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot month
+summary <- train_data %>%
+  group_by(month,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=month,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Month') + ggtitle('Month Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot day of week
+summary <- train_data %>%
+  group_by(day_of_week,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=day_of_week,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Day of Week') + ggtitle('Day of Week Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot campaign
+summary <- train_data %>%
+  group_by(campaign,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=campaign,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Campaign') + ggtitle('Campaign Distribution Based on Y Value') + xlim(c(0,20))
+
+# Plot poutcome
+summary <- train_data %>%
+  group_by(poutcome,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=poutcome,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Poutcome') + ggtitle('Poutcome Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Correlation of poutcome and pdays
+library(GGally)
+ggpairs(train_data[,c('poutcome','pdays')],aes(color = train_data$y))
+
+# Plot emp.var.rate
+summary <- train_data %>%
+  group_by(emp.var.rate,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=emp.var.rate,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Employment Variation Rate') + ggtitle('Employment Variation Rate Distribution Based on Y Value')
+
+# Plot cons.price.idx
+summary <- train_data %>%
+  group_by(cons.price.idx,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=cons.price.idx,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Consumer Price Index') + ggtitle('Consumer Price Index Distribution Based on Y Value')
+
+# Plot euribor3m
+summary <- train_data %>%
+  group_by(euribor3m,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=euribor3m,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Euribor3m') + ggtitle('Euribor3m Metric Distribution Based on Y Value')
+
+# Plot nr.employed
+summary <- train_data %>%
+  group_by(nr.employed,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=nr.employed,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Number of Employees') + ggtitle('Number of Employees Distribution Based on Y Value')
+
+# Correlations of socio-economic variables
+library(GGally)
+ggpairs(train_data[,c('emp.var.rate','cons.price.idx','nr.employed','euribor3m')],aes(color = train_data$y))
+
+# Are there more yes's over time?
+data$num <- 0
+data$num <- c(1:nrow(data))
+data$group <- ceiling(data$num / 1000)
+summary <- data %>%
+  group_by(group,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(data[data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(data[data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=group,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Y') + xlab('Time') + ggtitle('Y Value over Time')
+
+# Can we sort by row number, instead of using all the data?
+train_data_sorted <- train_data
+train_data_sorted$num <- as.numeric(rownames(train_data_sorted))
+train_data_sorted$group <- ceiling(train_data_sorted$num / 1000)
+summary <- train_data_sorted %>%
+  group_by(group,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data_sorted[train_data_sorted$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data_sorted[train_data_sorted$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=group,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Term Deposits') + xlab('Time') + ggtitle('Term Deposits over Time')
+
+# Are there higher nr.employed over time?
+data$num <- 0
+data$num <- c(1:nrow(data))
+data$group <- ceiling(data$num / 1000)
+summary <- data %>%
+  group_by(group) %>%
+  summarize(mean=mean(nr.employed))
+summary %>% ggplot(aes(x=group,y=mean)) + geom_point(color='blue') + 
+  ylab('Number of Employees') + xlab('Time') + ggtitle('Number of Employees over Time') + ylim(c(4950,5250))
+
+# We can try this with train_data_sorted now
+summary <- train_data_sorted %>%
+  group_by(group) %>%
+  summarize(mean=mean(nr.employed))
+summary %>% ggplot(aes(x=group,y=mean)) + geom_point(color='blue') + 
+  ylab('Number of Employees') + xlab('Time') + ggtitle('Number of Employees over Time') 
+
+# What if we tried number of employees vs time?
+train_data_sorted %>% ggplot(aes(x=num, y=nr.employed, color=y)) + geom_jitter()
+
+# What about month, euribor, and emp var rate?
+train_data_sorted %>% ggplot(aes(x=num, y=month, color=y)) + geom_jitter() + 
+  xlab('Time') + ylab('Month') + ggtitle('Last Contact Month over Time')
+  
+train_data_sorted %>% ggplot(aes(x=num, y=euribor3m, color=y)) + geom_jitter()
+
+train_data_sorted %>% ggplot(aes(x=num, y=emp.var.rate, color=y)) + geom_jitter() + 
+  xlab('Time') + ylab('Month') + ggtitle('Employment Variation Rate over Time')
+
+# Summary statistics
+summary(train_data$age)
+summary(train_data$campaign)
+summary(train_data$pdays)
+summary(train_data$previous)
+summary(train_data$emp.var.rate)
+summary(train_data$cons.price.idx)
+summary(train_data$cons.conf.idx)
+summary(train_data$euribor3m)
+summary(train_data$nr.employed)
+
+summary(train_data$job)
+summary(summary(train_data$job))
+length(summary(train_data$job))
+summary(train_data$marital)
+summary(summary(train_data$marital))
+length(summary(train_data$marital))
+summary(train_data$education)
+summary(summary(train_data$education))
+length(summary(train_data$education))
+summary(train_data$default)
+summary(summary(train_data$default))
+length(summary(train_data$default))
+summary(train_data$housing)
+summary(summary(train_data$housing))
+length(summary(train_data$housing))
+summary(train_data$loan)
+summary(summary(train_data$loan))
+length(summary(train_data$loan))
+summary(train_data$contact)
+summary(summary(train_data$contact))
+length(summary(train_data$contact))
+summary(train_data$month)
+summary(summary(train_data$month))
+length(summary(train_data$month))
+summary(train_data$day_of_week)
+summary(summary(train_data$day_of_week))
+length(summary(train_data$day_of_week))
+summary(train_data$poutcome)
+summary(summary(train_data$poutcome))
+length(summary(train_data$poutcome))

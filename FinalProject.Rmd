@@ -191,9 +191,11 @@ summary %>% ggplot(aes(x=day_of_week,y=perc,fill=y)) + geom_bar(stat="identity")
   ylab('Percentage') + xlab('Day of Week') + ggtitle('Day of Week Percentages Based on Y Value') + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
+<br/>
 If y is Yes, there are ~20% more likely to be contacted on your cell phone than on landline.  There are certain months that also seem to have more term deposit sales in them.  Day of week looks to not have much change.
 
 ## Examine other data related with the current campaign or previous campaigns
+There are variables for number of contacts performed during this campaign and for this client (campaign), number of days that passed by after the client was last contacted from a previous campaign (pdays), number of contacts performed before this campaign and for this client (previous), and outcome of the previous marketing campaign (poutcome).
 ```{r}
 # Plot campaign
 summary <- train_data %>%
@@ -216,5 +218,86 @@ summary %>% ggplot(aes(x=poutcome,y=perc,fill=y)) + geom_bar(stat="identity") + 
   ylab('Percentage') + xlab('Poutcome') + ggtitle('Poutcome Percentages Based on Y Value') + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
+<br/>
 Campaign distributions seem pretty similar between Yes and No.  For Poutcome, success is more common for the yes than for no.
+
+## Examine socio-economic data
+There are variables for socio economic data for Employement Variation Rate, Consumer Price Index, Consumer Confidence Index, Euribor 3 month rate, and Numer of Employees.
+```{r}
+# Plot emp.var.rate
+summary <- train_data %>%
+  group_by(emp.var.rate,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=emp.var.rate,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Employment Variation Rate') + ggtitle('Employment Variation Rate Distribution Based on Y Value')
+
+# Plot cons.price.idx
+summary <- train_data %>%
+  group_by(cons.price.idx,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=cons.price.idx,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Consumer Price Index') + ggtitle('Consumer Price Index Distribution Based on Y Value')
+
+# Plot euribor3m
+summary <- train_data %>%
+  group_by(euribor3m,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=euribor3m,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Euribor3m') + ggtitle('Euribor3m Metric Distribution Based on Y Value')
+
+# Plot nr.employed
+summary <- train_data %>%
+  group_by(nr.employed,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=nr.employed,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Number of Employees') + ggtitle('Number of Employees Distribution Based on Y Value')
+
+# Correlations of socio-economic variables
+library(GGally)
+ggpairs(train_data[,c('emp.var.rate','cons.price.idx','nr.employed','euribor3m')],aes(color = train_data$y))
+```
+<br/>
+The Consumer Price Index data seems to have more of a flat distribution for those with a term deposit.  Employment Variation Rate, Euribor3m, and Number Employed all seem to have similar distributions where there is a higher percentage without term deposits for higher values of the index. <br/>
+<br/>
+
+Looking at the paired correlations between out of the socio economic variables, we can see that Employment Variation Rate, Euribor3m, and Number Employed are highly correlated.
+
+## Variables over time
+We want to see if there was any variation in term deposits over time.  The file explaining the dataset mentioned that the data was in order of date.
+```{r}
+# Sorting data by row number
+train_data_sorted <- train_data
+train_data_sorted$num <- as.numeric(rownames(train_data_sorted))
+train_data_sorted$group <- ceiling(train_data_sorted$num / 1000)
+summary <- train_data_sorted %>%
+  group_by(group,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data_sorted[train_data_sorted$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data_sorted[train_data_sorted$y == 'yes',]) * 100
+
+# Term deposit over time
+summary %>% ggplot(aes(x=group,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Term Deposits') + xlab('Time') + ggtitle('Term Deposits over Time')
+
+# Month over time
+train_data_sorted %>% ggplot(aes(x=num, y=month, color=y)) + geom_jitter() + 
+  xlab('Time') + ylab('Month') + ggtitle('Last Contact Month over Time')
+
+# Employment Variation Rate over time
+train_data_sorted %>% ggplot(aes(x=num, y=emp.var.rate, color=y)) + geom_jitter() + 
+  xlab('Time') + ylab('Month') + ggtitle('Employment Variation Rate over Time')
+```
 
