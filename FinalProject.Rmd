@@ -264,6 +264,79 @@ summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(tra
 summary %>% ggplot(aes(x=nr.employed,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
   ylab('Percentage') + xlab('Number of Employees') + ggtitle('Number of Employees Distribution Based on Y Value')
 
+### Analyzing campaign
+
+ggplot(train_data) +   
+  geom_histogram(mapping = aes(x=campaign, fill=y)) +  
+  ggtitle("Distribution of 'y' by campaign")
+
+### Analyzing JOB
+
+ggplot(train_data) +   
+  geom_bar(mapping = aes(x=job, fill = y)) +   
+  coord_flip() +     #Added coord flip here to make it more readable
+  ggtitle("Number of 'y' by job") +  
+  ylab("Count") +   
+  xlab("Job")
+
+Admin, technician and blue collar jobs are the top 3 subscribers by volume 
+
+df2 <- train_data %>%  
+  group_by(job) %>%  
+  count(y) %>%  
+  mutate(job_conv = n/sum(n)) %>%  
+  filter(y == "yes")
+
+ggplot(df2, aes(x=job, y=job_conv)) +  
+  geom_point() +  
+  coord_flip() 
+
+
+Above, I looked at the ratio of "yes" vs "no" and see that students and retired persons convert at much higher rates than those of other professions. And 'blue collar' has the lowest conversion rate
+
+So, if they were to want to improve the cost effectiveness of their campaigns they might want to target more 'students' and 'retirees'
+
+### Analyzing By Month
+
+ggplot(train_data) + 
+  geom_bar(mapping = aes(x=month, fill = y)) + 
+  ggtitle("Number of 'y' by month") +
+  ylab("Cnt") + xlab("month")
+
+#Education
+ggplot(train_data, aes(x = education, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Distribution of 'y' by Education") +  
+  ylab("Proportion") + 
+  xlab("Education Level")
+
+ggplot(train_data, aes(x = education, fill = y)) + 
+  geom_bar() + 
+  facet_wrap(~ y, scales = "free_y") + 
+  ggtitle("Distribution of 'y' by Education") +  
+  ylab("Count") + 
+  xlab("Education Level")
+
+  
+#Age
+ggplot(train_data) + 
+  geom_bar(mapping = aes(x=age, fill = y)) + 
+  ggtitle("Distribution of 'y' by Age Group") +  
+  ylab("Cnt") + 
+  xlab("Age Group")
+
+# by nr.employed
+ggplot(train_data) + geom_histogram(mapping = aes(x = nr.employed, fill = y)) +
+  ggtitle("Distribution of 'y' by nr.employed")
+
+# Euribor 3 month rate
+ggplot(train_data, aes(x = month , y = euribor3m, fill = y)) +  
+  geom_boxplot() +   
+  ggtitle("euribor3m by month")
+
+ggplot(train_data) + geom_histogram(mapping = aes(x = euribor3m, fill = y)) +
+  ggtitle("Distribution of euribor3m by month")
+
 # Correlations of socio-economic variables
 library(GGally)
 ggpairs(train_data[,c('emp.var.rate','cons.price.idx','nr.employed','euribor3m')],aes(color = train_data$y))
