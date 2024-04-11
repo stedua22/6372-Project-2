@@ -8,7 +8,7 @@ library(pROC) # roc
 library(car) # VIF
 
 # Pull in data
-data<-read.csv("C:/Users/aabro/OneDrive/Desktop/SMU Program/Classes/Stats 2/Final Project/bank-additional-full.csv",stringsAsFactors = T, sep=";")
+data<-read.csv("C:/Users/aabro/OneDrive/Desktop/SMU Program/Classes/Stats 2/Final Project/Data/bank-additional-full.csv",stringsAsFactors = T, sep=";")
 data$y <- relevel(data$y, ref="yes")
 data$month <- factor(data$month, levels=c('mar','apr','may','jun','jul','aug','sep','oct','nov','dec'))
 data$day_of_week <- factor(data$day_of_week, levels=c('mon','tue','wed','thu','fri'))
@@ -97,3 +97,19 @@ theshYes <- which.max(metrics$yes[!is.na(metrics$yes)])
 plot(metrics$tenYes) # 0.9222
 maxTenYes <- max(metrics$tenYes, na.rm = TRUE)
 theshTenYes <- which.max(metrics$tenYes[!is.na(metrics$tenYes)])
+
+predicted_classes <- ifelse(predicted > 0.6198, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+
+# We decided on using F1 as our metric, so let's use 0.6198 as the threshold
+form <- as.formula(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx)
+model <- glm(form, data = train_data, family = "binomial")
+predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > 0.6198, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.32272, Specificity = 0.96451, PPV = 0.53069, NPV = 0.91970, Prevalence = 0.11059
+confusion_matrix$byClass['F1'] # 0.4013652 
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc) # 0.7868
