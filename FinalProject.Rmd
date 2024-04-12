@@ -16,7 +16,7 @@ The first thing that is done when you get a dataset is to peform an Exploratory 
 Going forward, we will use the training set for all analysis and model building.  The test set will be used at the end to get metrics for the various models we create.
 ```{r}
 # Pull in data
-data<-read.csv("C:/Users/aabro/OneDrive/Desktop/SMU Program/Classes/Stats 2/Final Project/bank-additional-full.csv",stringsAsFactors = T, sep=";")
+data<-read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/bank-additional-full.csv',stringsAsFactors = T, sep=";")
 
 # Set levels to use for later
 data$y <- relevel(data$y, ref="yes")
@@ -278,9 +278,10 @@ ggplot(train_data) +
   ggtitle("Number of 'y' by job") +  
   ylab("Count") +   
   xlab("Job")
-
+```
 Admin, technician and blue collar jobs are the top 3 subscribers by volume 
 
+```{r}
 df2 <- train_data %>%  
   group_by(job) %>%  
   count(y) %>%  
@@ -290,14 +291,15 @@ df2 <- train_data %>%
 ggplot(df2, aes(x=job, y=job_conv)) +  
   geom_point() +  
   coord_flip() 
-
+```
 
 Above, I looked at the ratio of "yes" vs "no" and see that students and retired persons convert at much higher rates than those of other professions. And 'blue collar' has the lowest conversion rate
 
 So, if they were to want to improve the cost effectiveness of their campaigns they might want to target more 'students' and 'retirees'
 
-### Analyzing By Month
 
+### Analyzing By Month
+```{r}
 ggplot(train_data) + 
   geom_bar(mapping = aes(x=month, fill = y)) + 
   ggtitle("Number of 'y' by month") +
@@ -373,4 +375,187 @@ train_data_sorted %>% ggplot(aes(x=num, y=month, color=y)) + geom_jitter() +
 train_data_sorted %>% ggplot(aes(x=num, y=emp.var.rate, color=y)) + geom_jitter() + 
   xlab('Time') + ylab('Month') + ggtitle('Employment Variation Rate over Time')
 ```
+<br/>
+There definitely is a change in the data over time.  We may re-visit this later on.
 
+# Objective 1: Simple Logistic Regerssion Model
+We used a combination of forward and backward selection to determine a simple logistic regression model that performed well on the data.  We did this by adding each variable to a model, and then doing Cross Validation to test the out of sample data on AUROC (Area under the ROC curve).  We used 10 folds. <br/>
+<br/>
+After we chose the first variable, we then did this to add more variables to see if those increased the AUROC.  We also tried removing variables (once we got three of them) to see if that improved the score.  Below, I included example code for this logic.  It takes several minutes to run though, so it is not set to evaluate the code. <br/>
+<br/>
+One caveat is that since the Default variable only has 2 Yes values, it can cause errors sometimes during the cross validation.  This happens when the training data (a randomly chosen 90%) doesn't have either of those values, and the test data (the other 10%) has both of them.  This only happens 1% of the time, but when you are running 100s of tests, this happens regularly.  And since Default didn't increase the AUROC much anyways, we decided to drop the variable.
+```{r}
+train_data$default <- c()
+```
+```{r, eval = FALSE}
+# Forward Selection Example
+set.seed(21)
+vars <- names(train_data)
+vars <- vars[vars!="y"]
+num_vars <- length(vars)
+var_aucs <- data.frame("vars" = vars)
+num_folds <- 10
+for (j in 1:num_vars) {
+  var <- vars[j]
+  print(var)
+  folds <- createFolds(train_data$y, k = num_folds)
+  auc_scores <- numeric(num_folds)
+  for (i in 1:num_folds) {
+    train_indices <- unlist(folds[-i])
+    test_indices <- unlist(folds[i])
+    train <- train_data[train_indices, ]
+    test <- train_data[test_indices, ]
+    form <- as.formula(paste("y ~ ",var,sep=""))
+    model <- glm(form, data = train, family = "binomial")
+    predictions <- predict(model, newdata = test, type = "response")
+    roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+    auc_scores[i] <- auc(roc)
+  }
+  var_aucs$auc[var_aucs$var == var] <- mean(auc_scores)
+}
+
+# Backward selection example
+set.seed(24)
+start_form_str <- 'y ~ nr.employed + month + poutcome'
+vars <- c('nr.employed','month','poutcome')
+num_vars <- length(vars)
+var_aucs <- data.frame("vars" = vars)
+num_folds <- 10
+for (j in 1:num_vars) {
+  var <- vars[j]
+  print(var)
+  folds <- createFolds(train_data$y, k = num_folds)
+  auc_scores <- numeric(num_folds)
+  for (i in 1:num_folds) {
+    train_indices <- unlist(folds[-i])
+    test_indices <- unlist(folds[i])
+    train <- train_data[train_indices, ]
+    test <- train_data[test_indices, ]
+    form <- as.formula(paste(start_form_str," -",var,sep=""))
+    model <- glm(form, data = train, family = "binomial")
+    predictions <- predict(model, newdata = test, type = "response")
+    roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+    auc_scores[i] <- auc(roc)
+  }
+  var_aucs$auc[var_aucs$var == var] <- mean(auc_scores)
+}
+```
+<br/>
+After we did this until the AUROC didn't increase any more, the resulting model was y ~ month + poutcome + emp.var.rate + euribor3m + contact + cons.price.idx.  We then checked the p values and VIR to see if it made sense to keep all of those variables.
+
+```{r}
+library(car)
+model <- glm(y ~ month + poutcome + emp.var.rate + euribor3m + contact + cons.price.idx, data = train_data, family = "binomial")
+summary(model)
+vif(model)
+```
+<br/>
+The p values were all significant at the 0.05 level, but there was a high amount of correlation between emp.var.rate and euribor3m.  So we removed euribor3m to see if that didn't make the model too much worse.
+
+```{r}
+library(caret)
+library(pROC)
+set.seed(80)
+form <- as.formula('y ~ month + poutcome + emp.var.rate + contact + cons.price.idx')
+num_folds <- 10
+folds <- createFolds(train_data$y, k = num_folds)
+accuracy_scores <- numeric(num_folds)
+auc_scores <- numeric(num_folds)
+for (i in 1:num_folds) {
+  train_indices <- unlist(folds[-i])
+  test_indices <- unlist(folds[i])
+  train <- train_data[train_indices, ]
+  test <- train_data[test_indices, ]
+  model <- glm(form, data = train, family = "binomial")
+  predictions <- predict(model, newdata = test, type = "response")
+  roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+  auc_scores[i] <- auc(roc)
+}
+mean(auc_scores)  
+```
+<br/>
+It wasn't too much worse.  And removing the correlation between those two variables makes the model easier to interpret.
+
+```{r}
+model <- glm(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx, data = train_data, family = "binomial")
+summary(model)
+vif(model)
+```
+<br/>
+Now the VIFs are much more resonable without euribor3m.  So we preceded with the simpler model for our Simple Logistic Regression Model.
+
+# Calculating Metrics
+We are calculating Sensitivity (Correctly Predicted Positive / All Positive), Specificity (Correctly Predicted Negative / All Negative), Prevalence (All Positive / All Observations), PPV (Correctly Predicted Positive / Predicted Positive), NPV (Correctly Predicted Negative / Predicted Negative), and AUROC (Area under the ROC Curve). <br/>
+<br/>
+
+In addition, we are also calculating the F1 score.  This is equal to 2 * Sensitivity * PPV / (Sensitivity + PPV).  Since it is more important that we do a good job of predicting whether people will get a term deposit, and the F1 score is a nice metric to make sure that there is a good balance between Sensitivity and PPV, we decided to track this metric as well.
+
+## Simple Logisitc Regression Model
+First we determined the threshold to use for the Simple Logistic Regression Model in order to maximize the F1 metric.
+
+```{r}
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 0
+metrics$specificity <- 0
+metrics$ppv <- 0
+metrics$npv <- 0
+metrics$accuracy <- 0
+metrics$f1 <- 0
+form <- as.formula(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx)
+model <- glm(form, data = train_data, family = "binomial")
+predicted <- predict(model, newdata = train_data, type = "response")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted > metrics$thresh[i], 'no','yes')
+  confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+maxF1 <- max(metrics$f1, na.rm = TRUE)
+maxF1
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1
+
+# Plots
+metrics %>% ggplot(aes(x = thresh, y = sensitivity)) + geom_point() + 
+  ylab('Sensitivity') + xlab('Thresholds') + ggtitle('Sensitivity for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = specificity)) + geom_point() + 
+  ylab('Specificity') + xlab('Thresholds') + ggtitle('Specificity for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = ppv)) + geom_point() + 
+  ylab('PPV') + xlab('Thresholds') + ggtitle('PPV for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = npv)) + geom_point() + 
+  ylab('NPV') + xlab('Thresholds') + ggtitle('NPV for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = f1)) + geom_point() + 
+  ylab('F1 Score') + xlab('Thresholds') + ggtitle('F1 Scores for Training Data') + 
+  geom_point(data = data.frame(x = theshF1, y = maxF1), aes(x = x, y = y), size = 3, color = "red", fill = "red", shape = 21)
+```
+<br/>
+After we got the thresholds to use, then we calculated the metrics on the test dataset.
+
+```{r}
+# Test data
+predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix
+confusion_matrix$byClass['F1']
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc)
+plot(roc,print.thres="best",col="red")
+```
