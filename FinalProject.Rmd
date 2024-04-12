@@ -279,6 +279,7 @@ ggplot(train_data) +
   ylab("Count") +   
   xlab("Job")
 ```
+<br/>
 Admin, technician and blue collar jobs are the top 3 subscribers by volume 
 
 ```{r}
@@ -482,7 +483,171 @@ summary(model)
 vif(model)
 ```
 <br/>
-Now the VIFs are much more resonable without euribor3m.  So we preceded with the simpler model for our Simple Logistic Regression Model.
+Now the VIFs are much more resonable without euribor3m.  So we chose the simpler model for our Simple Logistic Regression Model.
+
+# Objective 2: Complex Logistic Regerssion Model
+For the second model, we looked into adding polynomial terms and/or interaction terms to the regression model.
+
+## Polynomial Terms
+To see if it made sense to add some polynomial terms we looked at what happened with adding those for Number of Employees, since that was the first variable added during Forward Selection (although it got removed later).
+```{r}
+# Make a nr.employed^2 variable
+train_data$ne2 = (train_data$nr.employed)^2
+
+# Plot nr.employed
+summary <- train_data %>%
+  group_by(nr.employed,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=nr.employed,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Number Employed') + ggtitle('Number Employed Based on Y Value')
+
+# Plot nr.employed^2
+summary <- train_data %>%
+  group_by(ne2,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=ne2,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Number Employed') + ggtitle('Number Employed Squared Based on Y Value')
+```
+<br/>
+These plots look very hard to distinguish.  So instead of plotting polynomial terms, we tried creating simple models and then calculating out of sample AUC.  If this increases as polynomial degree increases, then it could make sense to include polynomial terms.
+
+```{r}
+# Maybe just plot the improvement of out of sample AUC
+set.seed(120)
+vars <- 'nr.employed'
+allVars <- vars
+num_poly <- 10
+for (i in 1:length(vars)){
+  for (j in 2:num_poly){
+    if (class(train_data[,vars[i]]) != "factor") {
+      allVars <- c(allVars,paste('poly(',vars[i],',',j,')',sep=""))
+    }
+  }
+}
+num_vars <- length(allVars)
+var_aucs <- data.frame("vars" = allVars)
+num_folds <- 10
+for (j in 1:num_vars) {
+  var <- allVars[j]
+  print(var)
+  folds <- createFolds(train_data$y, k = num_folds)
+  auc_scores <- numeric(num_folds)
+  for (i in 1:num_folds) {
+    train_indices <- unlist(folds[-i])
+    test_indices <- unlist(folds[i])
+    train <- train_data[train_indices, ]
+    test <- train_data[test_indices, ]
+    form <- as.formula(paste("y ~ ",var,sep=""))
+    model <- glm(form, data = train, family = "binomial")
+    predictions <- predict(model, newdata = test, type = "response")
+    roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+    auc_scores[i] <- auc(roc)
+  }
+  var_aucs$auc[var_aucs$var == var] <- mean(auc_scores)
+}
+
+# Get max val
+maxAUC <- max(var_aucs$auc, na.rm = TRUE)
+maxDeg <- which.max(var_aucs$auc)
+
+# Looking at the p values for the highest degree model
+model <- glm(form, data = train_data, family = "binomial")
+summary(model) 
+
+# Plot the AUC improving
+var_aucs %>% ggplot(aes(x=1:10, y=auc)) + geom_point() + ylim(c(0.7,0.8)) + 
+  ylab('AUC') + xlab('Polynomial Degree') + ggtitle('Out of Sample AUC for nr.employed') + 
+  geom_point(data = data.frame(x = maxDeg, y = maxAUC), 
+             aes(x = x, y = y), size = 2, color = "red", fill = "red", shape = 21)
+```
+You can see from the plot that there is a pretty substantial increase in performance after 4 polynomial terms.  It levels off after that, but the maximum AUC is technically at n = 9.  And even the model for n = 10 shows that many of the higher degree terms are statistically significant, including the 10th term.<br/>
+<br/>
+
+We will proceed with trying forward selection using polynomial terms.  Using up to the 10th degree term seems like it should be sufficient.
+
+## Variable Interactions
+Variable interactions are often present that affect numeric response variables.  Usually to show that, you can plot.  To see if there are possible interactions, let's try with a coloring a couple of interactions.
+
+```{r}
+# Try plotting month by contact
+train_data %>% ggplot(aes(x=month,y=contact,color=y)) + geom_jitter() + 
+  ylab('Month') + xlab('Contact') + ggtitle('Term Deposit for Month and Contact')
+
+# Looking at model
+model <- glm('y ~ month*contact', data = train_data, family = "binomial")
+summary(model)
+
+# Try plotting month by day of week
+train_data %>% ggplot(aes(x=month,y=day_of_week,color=y)) + geom_jitter() + 
+  ylab('Month') + xlab('Day of Week') + ggtitle('Term Deposit for Month and Day of Week')
+
+# Looking at model
+model <- glm('y ~ month*day_of_week', data = train_data, family = "binomial")
+summary(model)
+```
+It looks like there is some promise for variable interactions.  When looking at Month vs Day of Week, certain months have days that have a different distribution of yes and no.  And certain days have months that have a different distribution.  Some of the interaction terms also have significant p values. <br/>
+We will also include interaction terms in the Forward Selection, along with the polynomial terms.  Below is some example code (not being evaluate, because it takes over an hour to finish) of adding all the single variables, polynomial variables, and interaction terms to the model.
+```{r, eval = FALSE}
+set.seed(70)
+vars <- colnames(train_data)
+vars <- vars[vars!="y"]
+allVars <- vars
+num_poly <- 10
+for (i in 1:length(vars)){
+  for (j in 2:num_poly){
+    if (class(train_data[,vars[i]]) != "factor") {
+      allVars <- c(allVars,paste('poly(',vars[i],',',j,')',sep=""))
+    }
+  }
+}
+for (i in 1:length(vars)){
+  for (j in 1:i){
+    if(vars[i]!=vars[j]) {
+      allVars <- c(allVars,paste(vars[i],'*',vars[j],sep=''))
+    }
+  }
+}
+# These variables need to be removed so the code doesn't error out
+allVars <- allVars[allVars!="poly(pdays,6)"] 
+allVars <- allVars[allVars!="poly(pdays,7)"]
+allVars <- allVars[allVars!="poly(pdays,8)"]
+allVars <- allVars[allVars!="poly(pdays,9)"]
+allVars <- allVars[allVars!="poly(pdays,10)"]
+allVars <- allVars[allVars!="poly(previous,7)"]
+allVars <- allVars[allVars!="poly(previous,8)"]
+allVars <- allVars[allVars!="poly(previous,9)"]
+allVars <- allVars[allVars!="poly(previous,10)"]
+allVars <- allVars[allVars!="poly(emp.var.rate,10)"]
+var_aucs <- data.frame("vars" = allVars)
+num_vars <- length(allVars)
+num_folds <- 10
+start_num <- 124
+for (j in start_num:num_vars) {
+  var <- allVars[j]
+  print(paste(j,'/',num_vars,': ',var,sep=''))
+  folds <- createFolds(train_data$y, k = num_folds)
+  auc_scores <- numeric(num_folds)
+  for (i in 1:num_folds) {
+    train_indices <- unlist(folds[-i])
+    test_indices <- unlist(folds[i])
+    train <- train_data[train_indices, ]
+    test <- train_data[test_indices, ]
+    form <- as.formula(paste("y ~ ",var,sep=""))
+    model <- glm(form, data = train, family = "binomial")
+    predictions <- predict(model, newdata = test, type = "response")
+    roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+    auc_scores[i] <- auc(roc)
+  }
+  var_aucs$auc[var_aucs$var == var] <- mean(auc_scores)
+}
+```
+After several iterations of this (plus Backwards Selection), we arrived at the final model: y ~ poly(cons.conf.idx,10) + pdays + day_of_week * month + month * contact + cons.conf.idx * housing + poutcome * previous + poly(campaign,5) + poly(euribor3m,8)  + campaign * month + cons.conf.idx * age + poly(previous,6) + campaign * contact + poly(age,3).
 
 # Calculating Metrics
 We are calculating Sensitivity (Correctly Predicted Positive / All Positive), Specificity (Correctly Predicted Negative / All Negative), Prevalence (All Positive / All Observations), PPV (Correctly Predicted Positive / Predicted Positive), NPV (Correctly Predicted Negative / Predicted Negative), and AUROC (Area under the ROC Curve). <br/>
@@ -493,7 +658,7 @@ In addition, we are also calculating the F1 score.  This is equal to 2 * Sensiti
 ## Simple Logisitc Regression Model
 First we determined the threshold to use for the Simple Logistic Regression Model in order to maximize the F1 metric.
 
-```{r}
+```{r, warning = FALSE}
 # Get threshold
 metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
 num_thresh <- nrow(metrics)
@@ -507,9 +672,6 @@ form <- as.formula(y ~ month + poutcome + emp.var.rate + contact + cons.price.id
 model <- glm(form, data = train_data, family = "binomial")
 predicted <- predict(model, newdata = train_data, type = "response")
 for (i in 1:num_thresh){
-  if(i %% 100 == 0) {
-    print(paste(i,'/',num_thresh,sep=''))
-  }
   
   # Confusion Matrix
   predicted_classes <- ifelse(predicted > metrics$thresh[i], 'no','yes')
@@ -549,6 +711,25 @@ After we got the thresholds to use, then we calculated the metrics on the test d
 ```{r}
 # Test data
 predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix
+confusion_matrix$byClass['F1']
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc)
+plot(roc,print.thres="best",col="red")
+```
+<br/>
+This code takes a while to run, so we won't include the code to maximize the threshold value going forward.  Given the thresholds though, here is the code to get the metrics.
+
+```{r}
+# Test data
+form <- as.formula(y ~ poly(cons.conf.idx,10) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,6) + campaign*contact + poly(age,3))
+model <- glm(form, data = train_data, family = "binomial")
+predicted <- predict(model, newdata = test_data, type = "response")
+theshF1 = 0.7354
 predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
 confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
 confusion_matrix
