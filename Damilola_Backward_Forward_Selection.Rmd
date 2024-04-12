@@ -1,0 +1,217 @@
+---
+title: "DS 6372"
+author: "Oluwadamilola Owolabi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Calling Libraries
+```{r}
+
+#library(jtools)
+library(sjPlot)
+#library(ResourceSelection)
+library(dplyr)
+library(ggplot2)
+```
+
+Getting the data
+```{r}
+
+# Getting the csv file
+#setwd("C:/Users/owola/Documents/MY_COURSES/SPRING_2024/DS_6372/Project/Project 2/bank+marketing/bank-additional/bank-additional")
+Bank <-read.csv("C:/Users/owola/Documents/MY_COURSES/SPRING_2024/DS_6372/Project/Project 2/bank+marketing/bank-additional/bank-additional/Bank-additional-full.csv", header= TRUE, sep = ';')
+head(Bank)
+names(Bank)
+```
+
+Splitting the dataset into training and test Data
+```{r}
+
+# Split into training and test
+set.seed(1234)
+perc_train <- .8 # Should we make this higher?
+train_indices <- sample(nrow(Bank), floor(perc_train * nrow(Bank)))
+BankData <- Bank[train_indices, ] #the training dataset
+BankTest <- Bank[-train_indices, ] #the validation dataset.
+yes_data <- BankTest[BankData$y == 'yes',] # 4250
+no_data <- BankData[BankTest$y == 'no',] # 31918
+
+BankData$y.num<-ifelse(BankData$y=="yes",1,0)
+BankData
+```
+
+
+
+
+#### Looking at logstic regression P-values on just the numerical variables
+ 
+```{r}
+
+log.model.numerical <-glm(y.num ~ age + duration + campaign + pdays + previous + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed ,data = BankData,family="binomial")
+coef(summary(log.model.numerical))
+```
+variables with p-values < 0.05, it means the variable is statistically significant
+Variables with statistical significance :- pdays, previous, emp.var.rate, cons.price.idx, cons.conf.idx, nr.employed.
+
+Creating a bar graph to show the intensity of each p-value
+
+```{r}
+
+data <- c(9.845997e-110, 7.352136e-12, 3.264951e-21, 4.943288e-10, 2.273849e-07, 1.082911e-06)  # Numeric data for bar heights
+log_data <- log(data) * -1
+labels <- c('pdays', 'previous', 'emp.var.rate', 'cons.price.idx', 'cons.conf.idx', 'nr.employed')  # Labels for the categories
+
+# Create a bar plot
+barplot(log_data, names.arg = labels, 
+        xlab = "Categories", ylab = "Frequency/Counts",
+        main = "Bar Plot Example",
+        col = "skyblue",  # Bar color
+        border = "black",  # Border color
+        ylim = c(0, max(log_data) * 1))  # Adjust y-axis limits for better visualization
+```
+
+
+#### Logistic regressions for categorical variables
+
+```{r}
+
+log.model.categorical <-glm(y.num ~ job + marital + education + default + housing + loan + contact + month + day_of_week + poutcome ,data = BankData,family="binomial")
+coef(summary(log.model.categorical))
+```
+## variables with p-values < 0.05, it means the variable is statistically significant
+## Variables with statistical significance :- jobblue-collar, jobhousemaid, jobretired, jobservices, jobstudent, jobtechnician, maritalsingle, jobunemployed, maritalsingle, educationunknown, defaultunknown, contacttelephone, monthaug, monthdec, monthjul, monthmar, monthmay, monthnov, monthoct, monthsep, day_of_weekmon, day_of_weekwed, poutcomesuccess 
+
+Creating a bar graph to show the intensity of each p-value
+
+```{r}
+
+#Had to scrap this code. Too much hard coding
+
+# data <- c(1.551613e-33, 5.995821e-01, 1.592811e-14, 4.456974e-03, 1.195754e-10, 3.376630e-02, 5.436889e-03, 4.942619e-02, 4.420344e-22, 7.001195e-78, 1.497726e-34, 1.092251e-06, 5.133784e-30, 4.295017e-27, 3.491645e-34, 1.036440e-31, 5.489694e-15, 1.572625e-03,  1.163557e-07, 2.343290e-02, 3.047043e-185)  # Numeric data for bar heights
+# log_data <- log(data) * -1
+# labels <- c('jobblue-collar', 'jobhousemaid', 'jobretired', 'jobservices', 'jobstudent', 'jobtechnician', 'maritalsingle', 'jobunemployed', 'maritalsingle', 'educationunknown', 'defaultunknown', 'contacttelephone', 'monthaug', 'monthdec', 'monthjul', 'monthmar', 'monthmay', 'monthnov', 'monthoct', 'monthsep', 'day_of_weekmon', 'day_of_weekwed', 'poutcomesuccess')  # Labels for the categories
+# 
+# # Create a bar plot
+# barplot(log_data, names.arg = labels, 
+#         xlab = "Categories", ylab = "Frequency/Counts",
+#         main = "Bar Plot Example",
+#         col = "skyblue",  # Bar color
+#         border = "black",  # Border color
+#         ylim = c(0, max(log_data) * 1))  # Adjust y-axis limits for better visualization
+```
+
+```{r}
+names(BankData)
+
+log.model <-glm(y.num ~ job + marital + education + default + housing + loan + contact + month + day_of_week + poutcome + age + duration + campaign + pdays + previous + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed ,data = BankData,family="binomial")
+coef(summary(log.model))
+```
+
+```{r}
+# Extract variable names
+variable_names <- rownames(summary(log.model)$coefficients)
+
+# getting the  p-values from the model3
+p_values <- summary(log.model)$coefficients[, 4]  # Assuming p-values are in the 5th column of the summary table
+p_values <- data.frame(p_values)$p_values
+
+df <- data.frame(variable_names, p_values) #combining the pvalues and variable names into a dataframe
+
+df <- df[!df$p_value == 0 , ] #removing varaiables with pvalue = 0
+df$p_values <- log(df$p_values)  * -1
+
+barplot(df$p_values, 
+        main = "P-values of Regression Coefficients less than the significance level 0.05", 
+        xlab = "Variables", 
+        ylab = "P-value",
+        names.arg = df$variable_names,
+        las = 2,  # Rotate x-axis labels vertically for better readability
+        col = "steelblue",  # Set color of bars
+        ylim = c(exp(0.05) * -1, max(df$p_values) * 1.2)  # Set ylim from the significance level to the minimum pvalue
+        
+)
+
+library(ggplot2)
+ggplot(df,aes(variable_names,p_values, fill = ifelse(p_values > (exp(0.05) * -1), "Positive", "Negative"))) +
+  geom_bar(stat="identity", fill = "skyblue") + 
+  #geom_text(aes(label = variable_names), vjust = -0.5) +  # Add text labels on top of bars
+  scale_fill_manual(values = c("Positive" = "skyblue", "Negative" = "salmon")) +
+  labs(x = "Variables", y = "P-values", title = "P-values of Regression Coefficients less than the significance level 0.05") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))  # Rotate x-axis labels for better readability
+
+```
+
+## Using forward/backward model selection
+
+Forward selection
+```{r}
+library(leaps)
+
+model.fwd = regsubsets(y.num ~ job + marital + education + default + housing + loan + contact + month + day_of_week + poutcome + age + duration + campaign + pdays + previous + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed ,data = BankData, nvmax=20, method="forward")
+
+summary(model.fwd)$adjr2
+summary(model.fwd)$rss
+summary(model.fwd)$bic
+
+#par(mar=c(.000001,.000001,.000001,.000001))
+bics<-summary(model.fwd)$bic
+plot(1:21,bics,type="l",ylab="BIC",xlab="# of predictors") #got 21 from the forward selection prediction
+index<-which(bics==min(bics))
+points(index,bics[index],col="red",pch=10)
+
+adjr2<-summary(model.fwd)$adjr2
+plot(1:21,adjr2,type="l",ylab="Adjusted R-squared",xlab="# of predictors")
+index<-which(adjr2==max(adjr2))
+points(index,adjr2[index],col="red",pch=10)
+
+rss<-summary(model.fwd)$rss
+plot(1:21,rss,type="l",ylab="train RSS",xlab="# of predictors")
+index<-which(rss==min(rss))
+points(index,rss[index],col="red",pch=10)
+
+coef(model.fwd,21) #looking at coefficints
+
+#Ans: out of 10 categorical variables and 10 munerical variables, the feature selection chose 14 subcategorical variables and 7 numerical variables.
+
+# The variables are "jobblue-collar", "jobretired", "jobstudent", "monthaug", "monthdec", "monthjul", "monthjun", "monthmar", "monthmay", "monthnov", "day_of_weekmon", "day_of_weekthu", "poutcomesuccess", "age", "campaign", "previous", "cons.price.idx", "cons.conf.idx", "euribor3m", "nr.employed", "loanunknown".
+```
+
+backward selection
+```{r}
+
+model.bwd=regsubsets(y.num ~ job + marital + education + default + housing + loan + contact + month + day_of_week + poutcome + age + duration + campaign + pdays + previous + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed ,data = BankData, nvmax=20, method="backward", really.big=TRUE)
+
+summary(model.bwd)$adjr2
+summary(model.bwd)$rss
+summary(model.bwd)$bic
+
+#par(mar=c(.01,.01,.01,.01))
+#par(mfrow=c(1,21))
+bics<-summary(model.bwd)$bic
+plot(1:21,bics,type="l",ylab="BIC",xlab="# of predictors") #got 7 from the forward selection prediction
+index<-which(bics==min(bics))
+points(index,bics[index],col="red",pch=30)
+
+adjr2<-summary(model.bwd)$adjr2
+plot(1:21,adjr2,type="l",ylab="Adjusted R-squared",xlab="# of predictors")
+index<-which(adjr2==max(adjr2))
+points(index,adjr2[index],col="red",pch=30)
+
+rss<-summary(model.bwd)$rss
+plot(1:21,rss,type="l",ylab="train RSS",xlab="# of predictors")
+index<-which(rss==min(rss))
+points(index,rss[index],col="red",pch=30)
+
+coef(model.fwd,21) #looking at coefficints
+
+#Ans: out of 10 categorical variables and 10 munerical variables, the feature selection chose 14 subcategorical variables and 7 numerical variables.
+
+# The variables are "jobblue-collar", "jobretired", "jobstudent", "monthaug", "monthdec", "monthjul", "monthjun", "monthmar", "monthmay", "monthnov", "day_of_weekmon", "day_of_weekthu", "poutcomesuccess", "age", "campaign", "previous", "cons.price.idx", "cons.conf.idx", "euribor3m", "nr.employed", "loanunknown".
+
+```
+
