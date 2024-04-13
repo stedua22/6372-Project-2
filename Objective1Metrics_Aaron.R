@@ -6,6 +6,7 @@
 library(caret) # CreateFolds
 library(pROC) # roc
 library(car) # VIF
+library(tidyverse)
 
 # Pull in data
 data<-read.csv("C:/Users/aabro/OneDrive/Desktop/SMU Program/Classes/Stats 2/Final Project/Data/bank-additional-full.csv",stringsAsFactors = T, sep=";")
@@ -100,6 +101,8 @@ theshTenYes <- which.max(metrics$tenYes[!is.na(metrics$tenYes)])
 
 predicted_classes <- ifelse(predicted > 0.6198, 'no','yes')
 confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+confusion_matrix # # Sensitivity = 0.32824, Specificity = 0.96643, PPV = 0.55510, NPV = 0.91852, Prevalence = 0.11317
+confusion_matrix$byClass['F1'] # 0.4125379
 
 # We decided on using F1 as our metric, so let's use 0.6198 as the threshold
 form <- as.formula(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx)
@@ -113,3 +116,194 @@ confusion_matrix$byClass['F1'] # 0.4013652
 # AUC
 roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
 auc(roc) # 0.7868
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 0
+metrics$specificity <- 0
+metrics$ppv <- 0
+metrics$npv <- 0
+metrics$accuracy <- 0
+metrics$f1 <- 0
+form <- as.formula(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx)
+model <- glm(form, data = train_data, family = "binomial")
+predicted <- predict(model, newdata = train_data, type = "response")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted > metrics$thresh[i], 'no','yes')
+  confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+maxF1 <- max(metrics$f1, na.rm = TRUE)
+maxF1
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1
+
+# Plots
+metrics %>% ggplot(aes(x = thresh, y = sensitivity)) + geom_point() + 
+  ylab('Sensitivity') + xlab('Thresholds') + ggtitle('Sensitivity for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = specificity)) + geom_point() + 
+  ylab('Specificity') + xlab('Thresholds') + ggtitle('Specificity for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = ppv)) + geom_point() + 
+  ylab('PPV') + xlab('Thresholds') + ggtitle('PPV for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = npv)) + geom_point() + 
+  ylab('NPV') + xlab('Thresholds') + ggtitle('NPV for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = f1)) + geom_point() + 
+  ylab('F1 Score') + xlab('Thresholds') + ggtitle('F1 Scores for Training Data') + 
+  geom_point(data = data.frame(x = theshF1, y = maxF1), aes(x = x, y = y), size = 3, color = "red", fill = "red", shape = 21)
+
+# Test data
+predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.4929, Specificity = 0.9221, PPV = 0.4402, NPV = 0.9360, Prevalence = 0.1106
+confusion_matrix$byClass['F1'] # 0.465044
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc) # 0.7868
+plot(roc,print.thres="best",col="red")
+
+################################################################################
+# Get the metrics for the complicated logistic model poly(cons.conf.idx,10) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,6) + campaign*contact + poly(age,3)
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 0
+metrics$specificity <- 0
+metrics$ppv <- 0
+metrics$npv <- 0
+metrics$accuracy <- 0
+metrics$f1 <- 0
+form <- as.formula(y ~ poly(cons.conf.idx,10) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,6) + campaign*contact + poly(age,3))
+model <- glm(form, data = train_data, family = "binomial")
+predicted <- predict(model, newdata = train_data, type = "response")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted > metrics$thresh[i], 'no','yes')
+  confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 0.5073269
+maxF1
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1
+
+# Plot
+metrics %>% ggplot(aes(x = thresh, y = f1)) + geom_point() + 
+  ylab('F1 Score') + xlab('Thresholds') + ggtitle('F1 Scores on Training Data') + 
+  geom_point(data = data.frame(x = theshF1, y = maxF1), aes(x = x, y = y), size = 3, color = "red", fill = "red", shape = 21)
+
+# Plots
+plot(metrics$sensitivity) # no max
+plot(metrics$specificity) # no max
+plot(metrics$ppv) # no max
+plot(metrics$npv) # no max
+plot(metrics$accuracy)
+maxAccuracy <- max(metrics$accuracy, na.rm = TRUE)
+theshAccuracy <- which.max(metrics$accuracy[!is.na(metrics$accuracy)])
+plot(metrics$f1) # 0.6198
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 0.5073269
+theshF1 <- metrics$thresh[which.max(metrics$f1)]  # 0.6771
+
+# Test data
+form <- as.formula(y ~ poly(cons.conf.idx,10) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,6) + campaign*contact + poly(age,3))
+model <- glm(form, data = train_data, family = "binomial")
+predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > 0.6771, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.45554, Specificity = 0.94691, PPV = 0.51617, NPV = 0.93328, Prevalence = 0.11059
+confusion_matrix$byClass['F1'] # 0.483965
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc) # 0.8013
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 0
+metrics$specificity <- 0
+metrics$ppv <- 0
+metrics$npv <- 0
+metrics$accuracy <- 0
+metrics$f1 <- 0
+form <- as.formula(y ~ poly(cons.conf.idx,10) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,6) + campaign*contact + poly(age,3))
+model <- glm(form, data = train_data, family = "binomial")
+predicted <- predict(model, newdata = train_data, type = "response")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted > metrics$thresh[i], 'no','yes')
+  confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+maxF1 <- max(metrics$f1, na.rm = TRUE)
+maxF1 # 0.5073269
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.7354
+
+# Plots
+metrics %>% ggplot(aes(x = thresh, y = sensitivity)) + geom_point() + 
+  ylab('Sensitivity') + xlab('Thresholds') + ggtitle('Sensitivity for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = specificity)) + geom_point() + 
+  ylab('Specificity') + xlab('Thresholds') + ggtitle('Specificity for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = ppv)) + geom_point() + 
+  ylab('PPV') + xlab('Thresholds') + ggtitle('PPV for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = npv)) + geom_point() + 
+  ylab('NPV') + xlab('Thresholds') + ggtitle('NPV for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = f1)) + geom_point() + 
+  ylab('F1 Score') + xlab('Thresholds') + ggtitle('F1 Scores for Training Data') + 
+  geom_point(data = data.frame(x = theshF1, y = maxF1), aes(x = x, y = y), size = 3, color = "red", fill = "red", shape = 21)
+
+# Test data
+predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.52799, Specificity = 0.92494, PPV = 0.46654, NPV = 0.94034, Prevalence = 0.1106
+confusion_matrix$byClass['F1'] # 0.4953656
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc) # 0.8013
+plot(roc,print.thres="best",col="red")
