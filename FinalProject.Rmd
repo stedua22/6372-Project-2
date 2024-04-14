@@ -1,7 +1,7 @@
 ---
 title: "Final Project - "
 author: "Aaron Abromowitz, Stephanie Duarte, Dammy Owolabi"
-date: "2024-04-06"
+date: "2024-04-20"
 output: html_document
 ---
 
@@ -23,6 +23,9 @@ data$y <- relevel(data$y, ref="yes")
 data$month <- factor(data$month, levels=c('mar','apr','may','jun','jul','aug','sep','oct','nov','dec'))
 data$day_of_week <- factor(data$day_of_week, levels=c('mon','tue','wed','thu','fri'))
 
+# Duration was removed since the dataset explanation file said that it was created after y variable was known, so shouldn't be used for prediction.
+data$duration <- c()
+
 # Create the train and test split
 train_perc <- .8
 set.seed(1234)
@@ -31,7 +34,6 @@ train_data <- data[train_indices, ]
 nrow(train_data)
 test_data <- data[-train_indices, ] 
 nrow(test_data)
-train_data$duration <- c()
 ```
 
 ## Look at summary statistics for numeric variables
@@ -706,6 +708,37 @@ for (j in start_num:num_vars) {
 }
 ```
 After several iterations of this (plus Backwards Selection), we arrived at the final model: y ~ poly(cons.conf.idx,10) + pdays + day_of_week * month + month * contact + cons.conf.idx * housing + poutcome * previous + poly(campaign,5) + poly(euribor3m,8)  + campaign * month + cons.conf.idx * age + poly(previous,6) + campaign * contact + poly(age,3).
+
+## Adding PCA
+Since our earlier PCA analysis looked promising, I tried adding PC1 to the model.
+```{r, warning=FALSE}
+# PCA
+df.numeric <- train_data[ , sapply(train_data, is.numeric)]
+pc.result<-prcomp(df.numeric,scale.=TRUE)
+pc.scores<-pc.result$x
+pc.scores<-data.frame(pc.scores)
+
+# Trying out adding PC1
+train_data$PC1 <- pc.scores$PC1
+set.seed(134)
+form <- as.formula('y ~ PC1 + poly(cons.conf.idx,10) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,6) + campaign*contact + poly(age,3)')
+num_folds <- 10
+folds <- createFolds(train_data$y, k = num_folds)
+accuracy_scores <- numeric(num_folds)
+auc_scores <- numeric(num_folds)
+for (i in 1:num_folds) {
+  train_indices <- unlist(folds[-i])
+  test_indices <- unlist(folds[i])
+  train <- train_data[train_indices, ]
+  test <- train_data[test_indices, ]
+  model <- glm(form, data = train, family = "binomial")
+  predictions <- predict(model, newdata = test, type = "response")
+  roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+  auc_scores[i] <- auc(roc)
+}
+mean(auc_scores)
+```
+The AUC value was slightly worse than it was when PC1 wasn't there.  So we'll just use the formula derived above.
 
 # Calculating Metrics
 We are calculating Sensitivity (Correctly Predicted Positive / All Positive), Specificity (Correctly Predicted Negative / All Negative), Prevalence (All Positive / All Observations), PPV (Correctly Predicted Positive / Predicted Positive), NPV (Correctly Predicted Negative / Predicted Negative), and AUROC (Area under the ROC Curve). <br/>
