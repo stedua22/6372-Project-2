@@ -1,6 +1,6 @@
 ---
 title: "Final Project - "
-author: "Aaron Abromowitz, Stephanie Duarte, Dammy "
+author: "Aaron Abromowitz, Stephanie Duarte, Dammy Owolabi"
 date: "2024-04-06"
 output: html_document
 ---
@@ -350,6 +350,63 @@ The Consumer Price Index data seems to have more of a flat distribution for thos
 
 Looking at the paired correlations between out of the socio economic variables, we can see that Employment Variation Rate, Euribor3m, and Number Employed are highly correlated.
 
+## Clustering
+We wanted to see if a clustering analysis of the data would be useful.  We only looked at the numeric variables.  The purpose of a clustering analysis is to see if splitting the data into clusters allows for additional insight, particularly into classification. <br/>
+<br/>
+
+First, we will try to determine the number of clusters to use.  The metric we used for comparing cluster sizes is the Silhoutte Statistic.  Below is the code I ran, but it has trouble knitting.  The heat maps are in the PPT though.
+```{r, eval=FALSE}
+library(RColorBrewer)
+library(pheatmap)
+library(cluster)
+df.numeric <- train_data[ , sapply(train_data, is.numeric)]
+center.scale=scale(df.numeric)
+mydist<-dist(center.scale)
+sim.clust<-hclust(mydist,method="complete")
+max_clusters <- 20
+my.sil<-c()
+for (i in 2:max_clusters){
+  print(i)
+  sil.result<-silhouette(cutree(sim.clust,i),mydist)
+  my.sil[i-1]<-summary(sil.result)$avg.width
+}
+```
+
+```{r}
+max_clusters <- 20
+my.sil <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/my_sil.csv')
+my.sil <- my.sil$x
+ggplot(data = data.frame(x=2:max_clusters, y=my.sil),aes(x=x,y=y)) + geom_line() + 
+  ylab('Silhouette') + xlab('Cluster Size') + ggtitle('Determining Number of Clusters to Use') + 
+  geom_point(data = data.frame(x = 2, y = my.sil[1]), aes(x = x, y = y), size = 1, color = "red", fill = "red", shape = 21)
+```
+<br/>
+It looks like 2 clusters is the highest, so we will try that.
+
+```{r, eval=FALSE}
+num_clusters <- 2
+rownames(df.numeric)<-paste("R",1:nrow(df.numeric),sep="")
+annotation_row<-data.frame(Response=factor(train_data$y),Cluster=factor(cutree(sim.clust,num_clusters)))
+rownames(annotation_row)<-rownames(df.numeric)
+pheatmap(df.numeric,annotation_row=annotation_row,cluster_cols=F,scale="column",fontsize_row=3,legend=T
+         ,color=colorRampPalette(c("blue","white", "red"), space = "rgb")(100))
+```
+![Heatmap with 2 Clusters](https://raw.githubusercontent.com/stedua22/6372-Project-2/main/Heatmap%202%20Clusters.png)
+<br/>
+One of the clusters is huge and the other is tiny.  Let's try with 11 clusters.
+
+```{r, eval=FALSE}
+num_clusters <- 11
+rownames(df.numeric)<-paste("R",1:nrow(df.numeric),sep="")
+annotation_row<-data.frame(Response=factor(train_data$y),Cluster=factor(cutree(sim.clust,num_clusters)))
+rownames(annotation_row)<-rownames(df.numeric)
+pheatmap(df.numeric,annotation_row=annotation_row,cluster_cols=F,scale="column",fontsize_row=3,legend=T
+         ,color=colorRampPalette(c("blue","white", "red"), space = "rgb")(100))
+```
+![Heatmap with 11 Clusters](https://raw.githubusercontent.com/stedua22/6372-Project-2/main/Heatmap%2011%20Clusters.png)
+<br/>
+This is a little bit more interesting.  Some clusters had a lot of 'yes' results.  Others seem to be the same distribution as before.
+
 ## Variables over time
 We want to see if there was any variation in term deposits over time.  The file explaining the dataset mentioned that the data was in order of date.
 ```{r}
@@ -388,6 +445,7 @@ One caveat is that since the Default variable only has 2 Yes values, it can caus
 ```{r}
 train_data$default <- c()
 ```
+
 ```{r, eval = FALSE}
 # Forward Selection Example
 set.seed(21)
@@ -658,7 +716,7 @@ In addition, we are also calculating the F1 score.  This is equal to 2 * Sensiti
 ## Simple Logisitc Regression Model
 First we determined the threshold to use for the Simple Logistic Regression Model in order to maximize the F1 metric.
 
-```{r, warning = FALSE}
+```{r}
 # Get threshold
 metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
 num_thresh <- nrow(metrics)
@@ -671,6 +729,9 @@ metrics$f1 <- 0
 form <- as.formula(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx)
 model <- glm(form, data = train_data, family = "binomial")
 predicted <- predict(model, newdata = train_data, type = "response")
+```
+
+```{r, eval = FALSE}
 for (i in 1:num_thresh){
   
   # Confusion Matrix
@@ -685,8 +746,10 @@ for (i in 1:num_thresh){
   metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
   metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
 }
-
+```
+```{r}
 # Get threshold value that maximizes F1
+metrics <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/metrics_simple.csv')
 maxF1 <- max(metrics$f1, na.rm = TRUE)
 maxF1
 theshF1 <- metrics$thresh[which.max(metrics$f1)] 
@@ -704,6 +767,12 @@ metrics %>% ggplot(aes(x = thresh, y = npv)) + geom_point() +
 metrics %>% ggplot(aes(x = thresh, y = f1)) + geom_point() + 
   ylab('F1 Score') + xlab('Thresholds') + ggtitle('F1 Scores for Training Data') + 
   geom_point(data = data.frame(x = theshF1, y = maxF1), aes(x = x, y = y), size = 3, color = "red", fill = "red", shape = 21)
+
+# Get Confusion Matrix for threshold value
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+confusion_matrix
+confusion_matrix$byClass['F1']
 ```
 <br/>
 After we got the thresholds to use, then we calculated the metrics on the test dataset.
@@ -722,14 +791,27 @@ auc(roc)
 plot(roc,print.thres="best",col="red")
 ```
 <br/>
-This code takes a while to run, so we won't include the code to maximize the threshold value going forward.  Given the thresholds though, here is the code to get the metrics.
+This code takes a while to run, so we won't include the code to maximize the threshold value going forward.  Given the thresholds though, here is the code to get the metrics for the complicated logistic regression model.
 
 ```{r}
-# Test data
+# Get threshold value that maximizes F1
+metrics <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/metrics_complex_logistic.csv')
+maxF1 <- max(metrics$f1, na.rm = TRUE)
+maxF1
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1
+
+# Get Confusion Matrix for threshold value
 form <- as.formula(y ~ poly(cons.conf.idx,10) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,6) + campaign*contact + poly(age,3))
 model <- glm(form, data = train_data, family = "binomial")
+predicted <- predict(model, newdata = train_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+confusion_matrix
+confusion_matrix$byClass['F1']
+
+# Test data
 predicted <- predict(model, newdata = test_data, type = "response")
-theshF1 = 0.7354
 predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
 confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
 confusion_matrix
