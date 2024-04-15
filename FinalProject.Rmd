@@ -155,7 +155,7 @@ summary %>% ggplot(aes(x=housing,y=perc,fill=y)) + geom_bar(stat="identity") + f
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 <br/>
-None of these variables appear to show any strong indicator for yes or no.  It looks like higher ages tend to lean more towards yes, and certain jobs (Ex: admin) lean more towards yes.  When Y = no, there are more about double the unknown values, but still far under 50%.
+None of these variables appear to show any strong indicator for yes or no.  It looks like higher ages tend to lean more towards yes, and certain jobs (Ex: admin) lean more towards yes.  When Y = no, there are more than about double the unknown values, but still far under 50%.
 
 ## Examine data related with the last contact of the current campaign
 The dataset includes contact communication type, month of contact, and day of week of contac, for the last contact of the current campaign to sell term deposits.
@@ -351,6 +351,119 @@ The Consumer Price Index data seems to have more of a flat distribution for thos
 <br/>
 
 Looking at the paired correlations between out of the socio economic variables, we can see that Employment Variation Rate, Euribor3m, and Number Employed are highly correlated.
+
+### LOESS Curves
+LOESS curves can be useful to plot for numeric variables.  They show if there is a general trend to higher or lower probabilities if the numeric variable increases.  If they increase and then decrease, or vice-versa, this shows that the relationship between the two variables isn't quite as simple.
+
+```{r}
+# LOESS for Age
+train_data$num <- ifelse(train_data$y=="yes",1,0)
+train_data %>% ggplot(aes(x=age,y=num)) + 
+  geom_point() + geom_smooth(method="loess") + 
+  ggtitle('LOESS Curve for Age')
+
+# LOESS for Campaign
+train_data$num <- ifelse(train_data$y=="yes",1,0)
+train_data %>% ggplot(aes(x=campaign,y=num)) + 
+  geom_point() + geom_smooth(method="loess", size = 1, span = 2, se = FALSE) + 
+  ggtitle('LOESS Curve for Campaign') + ylim(c(-.1,1.1))
+
+# LOESS for nr.employed 
+train_data %>% ggplot(aes(x=nr.employed,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for nr.employed')  + 
+  ylim(c(-.1,1.1))
+
+# LOESS for emp.var.rate 
+train_data %>% ggplot(aes(x=emp.var.rate,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for emp.var.rate')
+
+# LOESS for cons.price.idx 
+train_data %>% ggplot(aes(x=cons.price.idx,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for cons.price.idx')
+```
+<br/>
+The LOESS plots for Age and Campaign show that No becomes more likely as Age and Campaign increase, and then less likely.  However, the LOESS plots for nr.employed, emp.var.rate, and cons.price.idx show a general downward trend toward a higher likelihood of No as those values increase.
+
+```{r}
+# LOESS for nr.employed by Month
+train_data %>% ggplot(aes(x=nr.employed,y=num,color = month)) + 
+  geom_point() + geom_smooth(method="loess", size = 1, span=1.1) +  
+  ggtitle('LOESS Curve for nr.employed by Month') + 
+  ylim(c(-.1,1.1))
+
+# LOESS for nr.employed by poutcome
+train_data %>% ggplot(aes(x=nr.employed,y=num,color = poutcome)) + 
+  geom_point() + geom_smooth(method="loess", size = 1, span = 1) +  
+  ggtitle('LOESS Curve for nr.employed by poutcome') + 
+  ylim(c(-.1,1.1))
+
+# LOESS for campaign by poutcome
+train_data %>% ggplot(aes(x=campaign,y=num,color = poutcome)) + 
+  geom_point() + geom_smooth(method="loess", size = 1, span = 1.1) +  
+  ggtitle('LOESS Curve for campaign by poutcome') + 
+  ylim(c(-.1,1.1))
+```
+<br/>
+The LOESS curves for these variable combinations show that using these variables in the same model or even as an interaction between these two variables could be useful.
+
+```{r}
+# LOESS for nr.employed squared
+train_data %>% ggplot(aes(x=(nr.employed)^2,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for nr.employed Squared')  + 
+  ylim(c(-.1,1.1))
+
+# LOESS for nr.employed cubed
+train_data %>% ggplot(aes(x=(nr.employed)^3,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for nr.employed Cubed') + 
+  ylim(c(-.1,1.1))
+
+# LOESS for nr.employed tenth power
+train_data %>% ggplot(aes(x=(nr.employed)^10,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for nr.employed to the Tenth Power') + 
+  ylim(c(-.1,1.1))
+```
+<br/>
+The LOESS curves for powers of nr.employed (particularly comparing the tenth power to the first or second power) seem to improve as the power increases.  This points to adding polynomial complexity terms to the model could be useful.
+
+### Percentage Plots
+It can be helpful to look at plots that sum up to 100% for Yes and No results for categorical variables.  This can show that certain values have a higher or lower percentage of Yes results.
+```{r}
+# Percentage plot for education
+ggplot(train_data, aes(x = education, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Distribution of 'y' by Education") +  
+  ylab("Proportion") + 
+  xlab("Education Level")
+
+# Percentage plot for month
+ggplot(train_data, aes(x = month, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Distribution of 'y' by Month") +  
+  ylab("Proportion") + 
+  xlab("Month")
+
+# Percentage plot for poutcome
+ggplot(train_data, aes(x = poutcome, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Distribution of 'y' by Previous Outcome") +  
+  ylab("Proportion") + 
+  xlab("poutcome")
+
+# Percentage plot for contact
+ggplot(train_data, aes(x = contact, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Distribution of 'y' by Contact Type") +  
+  ylab("Proportion") + 
+  xlab("contact")
+```
+<br/>
+Education shows very similar Yes/No percentages across the different Education Types, which indicates that it won't be a useful variable for model building.  Month and poutcome have 1 or more values with very high values of yes, which could be useful for model building.  Contact seems to have one category with roughly double the number of yes, so it might be slightlty useful in model building.
 
 ## Clustering
 We wanted to see if a clustering analysis of the data would be useful.  We only looked at the numeric variables.  The purpose of a clustering analysis is to see if splitting the data into clusters allows for additional insight, particularly into classification. <br/>
