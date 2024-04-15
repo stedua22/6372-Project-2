@@ -522,6 +522,26 @@ pheatmap(df.numeric,annotation_row=annotation_row,cluster_cols=F,scale="column",
 <br/>
 This is a little bit more interesting.  Some clusters had a lot of 'yes' results.  Others seem to be the same distribution as before.
 
+```{r}
+cluster2 <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/cluster2.csv')
+cluster11 <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/cluster11.csv')
+train_data$cluster2 <- cluster2$x
+train_data$cluster11 <- cluster11$x
+
+ggplot(train_data, aes(x = cluster2, fill = y)) + 
+    geom_bar(position = "fill") + 
+    ggtitle("Cluster 2 Distribution") +  
+    ylab("Proportion") + 
+    xlab("Cluster 2")
+
+ggplot(train_data, aes(x = cluster11, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Cluster 11 Distribution") +  
+  ylab("Proportion") + 
+  xlab("Cluster 11")
+```
+The 11 cluster example does seem like it does a reasonable job of picking out clusters with 
+
 ## Variables over time
 We want to see if there was any variation in term deposits over time.  The file explaining the dataset mentioned that the data was in order of date.
 ```{r}
