@@ -568,6 +568,166 @@ train_data_sorted %>% ggplot(aes(x=num, y=month, color=y)) + geom_jitter() +
 train_data_sorted %>% ggplot(aes(x=num, y=emp.var.rate, color=y)) + geom_jitter() + 
   xlab('Time') + ylab('Month') + ggtitle('Employment Variation Rate over Time')
 ```
+# PCA models
+
+```{r}
+
+#make sure "success" level is defined as "yes"
+str(train_data$y)
+
+#PCA
+df.numericPC <- train_data[ , sapply(train_data, is.numeric)]
+pc.result<-prcomp(df.numericPC,scale.=TRUE)
+pc.scores<-pc.result$x
+pc.scores<-data.frame(pc.scores)
+pc.scores$y<-train_data$y
+
+
+
+#Eignenvector Matrix
+View(pc.result$rotation)
+
+#Scree plot
+eigenvals<-(pc.result$sdev)^2
+eigenvals
+
+par(mfrow=c(1,2))
+plot(eigenvals,type="l",main="Scree Plot",ylab="Eigen Values",xlab="PC #")
+plot(eigenvals/sum(eigenvals),type="l",main="Scree Plot",ylab="Prop. Var. Explained",xlab="PC #",ylim=c(0,1))
+cumulative.prop<-cumsum(eigenvals/sum(eigenvals))
+lines(cumulative.prop,lty=2)
+legend("topleft", legend=c("Prop","Cumulative"),
+       lty=1:2, cex=0.8)
+
+
+data.frame(PC=1:length(eigenvals),Prop=eigenvals/sum(eigenvals),Cumulative=cumulative.prop)
+
+
+# Calculate the variance explained by each principal component
+var_explained <- pc.result$sdev^2 / sum(pc.result$sdev^2)
+cum_var_explained <- cumsum(var_explained)
+
+# Find the number of components that explain at least 90% of the variance
+num_comp_90 <- which(cum_var_explained >= 0.9)[1]
+
+# Print the number of components
+print(num_comp_90) #We would need 5 to retain approximately 90%
+
+
+#Plotting PCA variables with the two colors:
+
+pc.result<-prcomp(train_data[,-c(2,3,4,5,6,7,8,9,13,19)],scale.=TRUE)
+PC <- data.frame(diagnosis = train_data$y)
+PC$PC1 <- pc.result$x[,1]
+PC$PC2 <- pc.result$x[,2]
+PC$PC3 <- pc.result$x[,3]
+PC$PC4 <- pc.result$x[,4]
+PC$PC5 <- pc.result$x[,5]
+ggpairs(PC[,-1],aes(color=PC[,1]))
+
+
+
+
+#Use ggplot2 to plot the first few pc's
+ggplot(data = pc.scores, aes(x = PC1, y = PC2)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+ggplot(data = pc.scores, aes(x = PC2, y = PC3)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+ggplot(data = pc.scores, aes(x = PC3, y = PC4)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+ggplot(data = pc.scores, aes(x = PC4, y = PC5)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+
+# PCA without campaign, euribor3m,and nr.employed as they are more like factors and not continuous
+
+#Performing PCA on predictors
+
+df.numeric2 <- train_data[,-c(2,3,4,5,6,7,8,9,10,13,17,18,19)]
+pc.result2<-prcomp(df.numeric2,scale.=TRUE)
+pc.scores2<-pc.result2$x
+pc.scores2<-data.frame(pc.scores2)
+pc.scores2$y<-train_data$y
+#pc.scores2
+
+
+#Eignenvector Matrix
+View(pc.result2$rotation)
+
+#Scree plot
+eigenvals2<-(pc.result2$sdev)^2
+eigenvals2
+
+par(mfrow=c(1,2))
+plot(eigenvals2,type="l",main="Scree Plot",ylab="Eigen Values",xlab="PC #")
+plot(eigenvals2/sum(eigenvals2),type="l",main="Scree Plot",ylab="Prop. Var. Explained",xlab="PC #",ylim=c(0,1))
+cumulative.prop<-cumsum(eigenvals2/sum(eigenvals2))
+lines(cumulative.prop,lty=2)
+legend("topleft", legend=c("Prop","Cumulative"),
+       lty=1:2, cex=0.8)
+
+
+data.frame(PC=1:length(eigenvals2),Prop=eigenvals2/sum(eigenvals2),Cumulative=cumulative.prop)
+
+# Calculate the variance explained by each principal component
+var_explained <- pc.result2$sdev^2 / sum(pc.result2$sdev^2)
+cum_var_explained <- cumsum(var_explained)
+
+# Find the number of components that explain at least 90% of the variance
+num_comp_90 <- which(cum_var_explained >= 0.9)[1]
+
+# Print the number of components
+print(num_comp_90) #We would need 4 to retain approximately 90%
+
+
+
+#Plotting PCA variables with the two colors:
+
+pc.result2<-prcomp(train_data[,-c(2,3,4,5,6,7,8,9,10,13,17,18,19)],scale.=TRUE)
+PC <- data.frame(diagnosis = train_data$y)
+PC$PC1 <- pc.result2$x[,1]
+PC$PC2 <- pc.result2$x[,2]
+PC$PC3 <- pc.result2$x[,3]
+PC$PC4 <- pc.result2$x[,4]
+ggpairs(PC[,-1],aes(color=PC[,1]))
+
+
+
+```
+
+#GLMNET Model
+
+```{r}
+# Prepare the matrix of predictors
+x <- model.matrix(~ . - 1 - y, data = train_data) # Excludes the intercept and the response variable
+
+# Define the trainControl with classProbs enabled
+fitControl <- trainControl(method = "cv", 
+                           number = 10, 
+                           classProbs = TRUE, # Enable class probability predictions
+                           summaryFunction = twoClassSummary) # Use a summary function for classification
+
+# Run the glmnet model
+set.seed(1234) # for reproducibility
+glmnet_fit <- train(x, y = train_data$y, 
+                    method = "glmnet",
+                    trControl = fitControl,
+                    tuneLength = 10, # Number of lambda values to test
+                    metric = "ROC") # Optimize the model based on ROC curve
+
+# View the best model's lambda value and corresponding coefficients
+best_lambda <- glmnet_fit$bestTune$lambda
+coef(glmnet_fit$finalModel, s = best_lambda)
+
+
+```
 <br/>
 There definitely is a change in the data over time.  We may re-visit this later on.
 
@@ -1095,3 +1255,555 @@ We compared the simple model and complex model to how they did previously.  To e
 <br/>
 
 The training metrics were poor, with an F1 score of around .25 for both models.  However, the F1 scores for the test data were both above 0.5.  The extra Yes results in the data seemed to help out.  However, the AUC scores were worse, as well as the Specificity and NPV.  This makes some sense, since there were less No results.
+
+
+#QDA/LDA Model
+
+```{r}
+
+#LDA Model--- simple model month + poutcome + emp.var.rate + contact + cons.price.idx
+
+# Convert the binary outcome to a factor
+train_data$y <- as.factor(train_data$y)
+
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+
+lda.fit<-train(y~ month + poutcome + emp.var.rate + contact + cons.price.idx,
+               data=train_data,
+               method="lda",
+               trControl=fitControl,
+               metric="logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(lda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1 # 0.4847
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.1313
+
+
+
+# Test data
+predicted <- predict(lda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.5159, Specificity = 0.9179, PPV = 0.4388, NPV = 0.9385, Prevalence = 0.11059
+confusion_matrix$byClass['F1'] # 0.4743
+
+
+#AUC
+
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = test_data$y, 
+                 predictor = as.numeric(as.character(predicted[, "yes"])),
+                 levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc) # 0.7846
+
+
+
+
+
+#LDA Model--- using numeric variables only campaign + pdays + previous + emp.var.rate + cons.price.idx + euribor3m + nr.employed
+
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+
+lda.fit<-train(y~ campaign + pdays + previous + emp.var.rate + cons.price.idx + euribor3m + nr.employed,
+               data=train_data,
+               method="lda",
+               trControl=fitControl,
+               metric="logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(lda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) 
+maxF1 #
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 
+
+
+
+
+# Test data
+predicted <- predict(lda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix 
+confusion_matrix$byClass['F1'] # 0.4640
+
+
+#AUC
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = test_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc)
+
+
+
+
+#LDA Model--- using numeric variables  pdays + previous + emp.var.rate + cons.price.idx  + nr.employed
+
+# Convert the binary outcome to a factor
+train_data$y <- as.factor(train_data$y)
+
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+
+lda.fit<-train(y~ pdays + previous + emp.var.rate + cons.price.idx + nr.employed,
+               data=train_data,
+               method="lda",
+               trControl=fitControl,
+               metric="logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(lda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1 #0.4744
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.1082
+
+
+
+
+# Test data
+predicted <- predict(lda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.51043, Specificity = 0.9143, PPV = 0.4254, NPV = 0.9376, Prevalence = 0.1106
+confusion_matrix$byClass['F1'] # 0.4641
+
+
+#AUC
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = test_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc) # 0.7599
+
+
+
+#LDA Model--- using numeric variables  emp.var.rate + cons.price.idx + euribor3m 
+
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+
+lda.fit<-train(y~  emp.var.rate + cons.price.idx + euribor3m ,
+               data=train_data,
+               method="lda",
+               trControl=fitControl,
+               metric="logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(lda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1  # 0.4561
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.2306
+
+
+
+
+# Test data
+predicted <- predict(lda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix  # Sensitivity = 0.4522, Specificity = 0.9335, PPV = 0.4583, NPV = 0.9320, Prevalence = 0.1106
+confusion_matrix$byClass['F1'] # 0.4552
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = test_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc) # 0.7506
+
+
+
+# Training data
+predicted <- predict(lda.fit, newdata = train_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+confusion_matrix 
+confusion_matrix$byClass['F1'] #0.4561
+
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = train_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(train_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc) # 0.7555
+
+plot(roc,print.thres="best",col="red")
+title(main = 'ROC Curve for LDA', line = 3)
+
+
+
+# QDA Model--simple model
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+qda.fit <- train(y~ month + poutcome + emp.var.rate + contact + cons.price.idx,
+                 data = train_data,
+                 method = "qda",
+                 trControl = fitControl,
+                 metric = "logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(qda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1  # 0.4692
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.0227
+
+
+
+
+# Test data
+predicted <- predict(qda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.5917, Specificity = 0.8781, PPV = 0.3764, NPV = 0.9453, Prevalence =0.1106
+confusion_matrix$byClass['F1'] # 0.4600
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc.qda <- roc(response = test_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc.qda) # 0.7811
+
+
+
+
+
+# QDA --- using numeric variables  pdays + previous + emp.var.rate + cons.price.idx  + nr.employed
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+qda.fit <- train(y~ pdays + previous + emp.var.rate + cons.price.idx  + nr.employed,
+                 data = train_data,
+                 method = "qda",
+                 trControl = fitControl,
+                 metric = "logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(qda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1  # 0.4382
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.0635
+
+
+
+
+# Test data
+predicted <- predict(qda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # accuracy = 0.8546, Sensitivity = 0.4951, Specificity = 0.8993, PPV = 0.3793, NPV = 0.9347, Prevalence =0.1106
+confusion_matrix$byClass['F1'] # 0.4295
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc.qda <- roc(response = test_data$y, 
+               predictor = as.numeric(as.character(predicted[, "yes"])),
+               levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc.qda) # 0.7527
+
+
+
+
+
+# QDA --- using numeric variables  emp.var.rate + cons.price.idx + euribor3m
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+qda.fit <- train(y~ emp.var.rate + cons.price.idx + euribor3m,
+                 data = train_data,
+                 method = "qda",
+                 trControl = fitControl,
+                 metric = "logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(qda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1  # 0.4681
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.1264
+
+
+
+
+# Test data
+predicted <- predict(qda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # accuracy = 0.8765, Sensitivity = 0.4829, Specificity = 0.9255, PPV = 0.4463, NPV = 0.9351, Prevalence = 0.1106
+confusion_matrix$byClass['F1'] # 0.4639
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc.qda <- roc(response = test_data$y, 
+               predictor = as.numeric(as.character(predicted[, "yes"])),
+               levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc.qda) # 0.7623
+
+
+# Training data
+predicted <- predict(qda.fit, newdata = train_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+confusion_matrix 
+confusion_matrix$byClass['F1'] #0.4681
+
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = train_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(train_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc) # 0.7694
+
+plot(roc,print.thres="best",col="red")
+title(main = 'ROC Curve for QDA', line = 3)
+
+```
