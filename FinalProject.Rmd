@@ -873,6 +873,43 @@ mean(auc_scores)
 ```
 The AUC value was slightly worse than it was when PC1 wasn't there.  So we'll just use the formula derived above.
 
+## Support Vector Machine (SVM)
+For a non-parametric model, we tried Support Vector Machines (SVM).  These are a type of non-parametric model that try to form a line, plane, hyper-plan between datapoints. <br/>
+<br/>
+
+They had three important hyper parameters: the kernal, gamma, and the cost.  The kernal would be the type of fit.  Possible values are linear, polynomial, radial, etc.  Gamma sets the curvature of the separating hyper-plane.  A higher Gamma values means more curvature.  The Cost parameter sets how much error points it wants to classify on.  The higher the Cost, the worse it predicts on the training set errors (and hope isn't overfitting). <br/>
+<br/>
+
+Here is some example code for training the SVM.  It takes over half an hour to train even fairly simple models, so it isn't set to execute.
+
+```{r, eval = FALSE}
+form <- as.formula("y ~ euribor3m + month + poutcome + contact + cons.conf.idx + campaign + previous + age + housing + day_of_week")
+svm_model <- svm(form, data = train_data, kernel = "radial", gamma = 1, cost = 1, probability = TRUE, decision.values = TRUE)
+predictions <- predict(svm_model, newdata = train_data, probability = TRUE, decision.values = TRUE)
+probs <- attr(predictions,"probabilities")[,'yes']
+predicted_classes <- ifelse(probs > .083, 'yes','no') 
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+confusion_matrix # PPV = 0.69, Sens = 0.62
+confusion_matrix$byClass['F1'] # 0.65
+roc <- roc(response=train_data$y,predictor=probs,levels=c("yes", "no"),direction = ">")
+auc(roc) # 0.8513
+plot(roc,print.thres="best",col="red")
+title(main = 'ROC Curve for SVM', line = 3)
+```
+<br/>
+And here is the sample code for testing.
+
+```{r, eval = FALSE}
+predictions <- predict(svm_model, newdata = test_data, probability = TRUE)
+probs <- attr(predictions,"probabilities")[,'yes']
+predicted_classes <- ifelse(probs > .083, 'yes','no') 
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.5236, Specificity = 0.8705, PPV = 0.3345, NPV = 0.9363
+confusion_matrix$byClass['F1'] # 0.4082157
+roc <- roc(response=test_data$y,predictor=probs,levels=c("yes", "no"),direction = ">")
+auc(roc) # 0.6979
+```
+
 # Calculating Metrics
 We are calculating Sensitivity (Correctly Predicted Positive / All Positive), Specificity (Correctly Predicted Negative / All Negative), Prevalence (All Positive / All Observations), PPV (Correctly Predicted Positive / Predicted Positive), NPV (Correctly Predicted Negative / Predicted Negative), and AUROC (Area under the ROC Curve). <br/>
 <br/>
@@ -959,6 +996,8 @@ plot(roc,print.thres="best",col="red")
 <br/>
 This code takes a while to run, so we won't include the code to maximize the threshold value going forward.  Given the thresholds though, here is the code to get the metrics for the complicated logistic regression model.
 
+## Complex Logistic Regression
+
 ```{r}
 # Get threshold value that maximizes F1
 metrics <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/metrics_complex_logistic.csv')
@@ -988,3 +1027,71 @@ roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direct
 auc(roc)
 plot(roc,print.thres="best",col="red")
 ```
+
+## Comparing old vs new data
+We noticed as part of EDA that the newer data (data was in order of when it was received) had a different Yes/No distribution than older data.  We thought it would be interesting to see how training on old data and testing on newer data would perform.
+
+```{r}
+# Simple logistic model
+metrics <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/metrics_simple_date.csv')
+
+# Train simple model
+form <- as.formula(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx)
+model <- glm(form, data = train_data, family = "binomial")
+
+# Get threshold value that maximizes F1
+maxF1 <- max(metrics$f1, na.rm = TRUE)
+maxF1 # 0.2623695
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.8486
+
+# Try filtering data to get it to work
+test_data <- test_data[test_data$month != "sep",]
+
+# Get the confusion matrix
+predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.5661, Specificity = 0.7740, PPV = 0.5151, NPV = 0.8079, Prevalence = 0.2979
+confusion_matrix$byClass['F1'] # 0.5394243 
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc) # 0.7095
+
+# Complex model
+metrics <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/metrics_complex_logistic_date.csv')
+
+# Train simple model
+form <- as.formula(y ~ poly(cons.conf.idx,10) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,6) + campaign*contact + poly(age,3))
+model <- glm(form, data = train_data, family = "binomial")
+
+# Error about poly(cons.conf.idx,10) having too high of a degree
+form <- as.formula(y ~ poly(cons.conf.idx,9) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,3) + campaign*contact + poly(age,3))
+model <- glm(form, data = train_data, family = "binomial")
+
+# Get threshold value that maximizes F1
+maxF1 <- max(metrics$f1, na.rm = TRUE)
+maxF1 # 0.2431846
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.7308
+
+# Try filtering data to get it to work
+test_data <- test_data[test_data$month != "sep",]
+
+# Get the confusion matrix
+predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.6287, Specificity = 0.6716, PPV = 0.4482, NPV = 0.8100, Prevalence = 0.2979
+confusion_matrix$byClass['F1'] # 0.5233236 
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc) # 0.6502
+```
+
+We compared the simple model and complex model to how they did previously.  To even be able to test against the newer data, we first had to filter out month = Sep, since that didn't exist in the training data.  Also, we had to lower the order of some of the polynomials for the complex model. <br/>
+<br/>
+
+The training metrics were poor, with an F1 score of around .25 for both models.  However, the F1 scores for the test data were both above 0.5.  The extra Yes results in the data seemed to help out.  However, the AUC scores were worse, as well as the Specificity and NPV.  This makes some sense, since there were less No results.
