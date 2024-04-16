@@ -12,11 +12,39 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 # Load Data
 library(readr)
+library(GGally)
+library(caret)
+library(ggcorrplot)
+
+
 data <- read_csv("C:/Users/Steph/OneDrive/Documents/MSDS_6372/Project 2/bank-additional-full.csv")
 
+# Split into training and test
+data$y <- factor(data$y, levels = c("no", "yes"))
+data$y <- relevel(data$y, ref="yes")
+data$month <- factor(data$month, levels=c('mar','apr','may','jun','jul','aug','sep','oct','nov','dec'))
+data$day_of_week <- factor(data$day_of_week, levels=c('mon','tue','wed','thu','fri'))
+train_perc <- .8
+set.seed(1234)
+train_indices <- sample(nrow(data), floor(train_perc * nrow(data)))
+train_data <- data[train_indices, ] 
+test_data <- data[-train_indices, ] 
+train_data$duration <- c()
+train_data$default <- c()
 
 
 #EDA
+
+
+# Plot the graph numeric variables
+ggcorr(train_data,
+       method = c("pairwise", "spearman"),
+       nbreaks = 6,
+       hjust = 0.8,
+       label = TRUE,
+       label_size = 3,
+       color = "grey50")
+
 
 ### Analyzing campaign
 
@@ -63,11 +91,19 @@ ggplot(train_data, aes(x = education, fill = y)) +
   ggtitle("Distribution of 'y' by Education") +  
   ylab("Proportion") + 
   xlab("Education Level")
+
+ggplot(train_data, aes(x = education, fill = y)) + 
+  geom_bar() + 
+  facet_wrap(~ y, scales = "free_y") + 
+  ggtitle("Distribution of 'y' by Education") +  
+  ylab("Count") + 
+  xlab("Education Level")
+
   
 #Age
 ggplot(train_data) + 
   geom_bar(mapping = aes(x=age, fill = y)) + 
-  ggtitle("Distribution of 'y' by Age_Grp") +  
+  ggtitle("Distribution of 'y' by Age Group") +  
   ylab("Cnt") + 
   xlab("Age Group")
 
@@ -84,52 +120,144 @@ ggplot(train_data) + geom_histogram(mapping = aes(x = euribor3m, fill = y)) +
   ggtitle("Distribution of euribor3m by month")
 
 
-# Split into training and test
-data$month <- factor(data$month, levels=c('mar','apr','may','jun','jul','aug','sep','oct','nov','dec'))
-set.seed(1234)
-train_perc <- .8
-# train_index <- createDataPartition(data$y, p = train_perc, list = FALSE)
-train_indices <- sample(nrow(data), floor(train_perc * nrow(data)))
-train_data <- data[train_indices, ] # 32950
-test_data <- data[-train_indices, ] # 8238
-train_data$duration <- c()
-yes_data <- train_data[train_data$y == 'yes',] # 3712
-no_data <- train_data[train_data$y == 'no',] # 29239
-yes_data_test <- test_data[test_data$y == 'yes',] # 928
-no_data_test <- test_data[test_data$y == 'no',] # 7309
+#Pre-EDA
 
 
 
-# Set indicator variables
-train_data$default_unk <- 'no'
-train_data$default_unk[train_data$default=='unknown'] <- 'yes'
-train_data$default_unk <- as.factor(train_data$default_unk)
-train_data$campaign_1 <- 0
-train_data$campaign_1[train_data$campaign==1] <- 1
-train_data$pdays_999 <- 0
-train_data$pdays_999[train_data$pdays==999] <- 1
-train_data$previous_0 <- 0
-train_data$previous_0[train_data$previous==0] <- 1
-train_data$poutcome_non <- 'no'
-train_data$poutcome_non[train_data$poutcome=='nonexistent'] <- 'yes'
-train_data$poutcome_non <- as.factor(train_data$poutcome_non)
+
+#make sure "success" level is defined as "yes"
+str(train_data$y)
+
+#PCA
+df.numeric <- train_data[ , sapply(train_data, is.numeric)]
+pc.result<-prcomp(df.numeric,scale.=TRUE)
+pc.scores<-pc.result$x
+pc.scores<-data.frame(pc.scores)
+pc.scores$y<-train_data$y
 
 
-train_data$y <- as.numeric(train_data$y == "yes")  # Convert to 1 for "yes" and 0 for "no"
 
-# Logistic Regression
-mod <- glm(y ~ age + job + marital + education + default * default_unk + housing + loan + 
-           campaign * campaign_1 + pdays * pdays_999 + previous * previous_0 + 
-           poutcome * poutcome_non + emp.var.rate + cons.price.idx + cons.conf.idx + 
-           euribor3m + nr.employed,
-           data = train_data,
-           family = "binomial")
+#Eignenvector Matrix
+View(pc.result$rotation)
 
-summary(mod)
+#Scree plot
+eigenvals<-(pc.result$sdev)^2
+eigenvals
+
+par(mfrow=c(1,2))
+plot(eigenvals,type="l",main="Scree Plot",ylab="Eigen Values",xlab="PC #")
+plot(eigenvals/sum(eigenvals),type="l",main="Scree Plot",ylab="Prop. Var. Explained",xlab="PC #",ylim=c(0,1))
+cumulative.prop<-cumsum(eigenvals/sum(eigenvals))
+lines(cumulative.prop,lty=2)
+legend("topleft", legend=c("Prop","Cumulative"),
+       lty=1:2, cex=0.8)
 
 
-# Convert the binary outcome to a factor
-train_data$y <- as.factor(train_data$y)
+data.frame(PC=1:length(eigenvals),Prop=eigenvals/sum(eigenvals),Cumulative=cumulative.prop)
+
+
+# Calculate the variance explained by each principal component
+var_explained <- pc.result$sdev^2 / sum(pc.result$sdev^2)
+cum_var_explained <- cumsum(var_explained)
+
+# Find the number of components that explain at least 90% of the variance
+num_comp_90 <- which(cum_var_explained >= 0.9)[1]
+
+# Print the number of components
+print(num_comp_90) #We would need 5 to retain approximately 90%
+
+
+#Plotting PCA variables with the two colors:
+
+pc.result<-prcomp(train_data[,-c(2,3,4,5,6,7,8,9,13,19)],scale.=TRUE)
+PC <- data.frame(diagnosis = train_data$y)
+PC$PC1 <- pc.result$x[,1]
+PC$PC2 <- pc.result$x[,2]
+PC$PC3 <- pc.result$x[,3]
+PC$PC4 <- pc.result$x[,4]
+PC$PC5 <- pc.result$x[,5]
+ggpairs(PC[,-1],aes(color=PC[,1]))
+
+
+
+
+#Use ggplot2 to plot the first few pc's
+ggplot(data = pc.scores, aes(x = PC1, y = PC2)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+ggplot(data = pc.scores, aes(x = PC2, y = PC3)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+ggplot(data = pc.scores, aes(x = PC3, y = PC4)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+ggplot(data = pc.scores, aes(x = PC4, y = PC5)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+
+# PCA without campaign, euribor3m,and nr.employed as they are more like factors and not continuous
+
+#Performing PCA on predictors
+
+df.numeric2 <- train_data[,-c(2,3,4,5,6,7,8,9,10,13,17,18,19)]
+pc.result2<-prcomp(df.numeric2,scale.=TRUE)
+pc.scores2<-pc.result2$x
+pc.scores2<-data.frame(pc.scores2)
+pc.scores2$y<-train_data$y
+#pc.scores2
+
+
+#Eignenvector Matrix
+View(pc.result2$rotation)
+
+#Scree plot
+eigenvals2<-(pc.result2$sdev)^2
+eigenvals2
+
+par(mfrow=c(1,2))
+plot(eigenvals2,type="l",main="Scree Plot",ylab="Eigen Values",xlab="PC #")
+plot(eigenvals2/sum(eigenvals2),type="l",main="Scree Plot",ylab="Prop. Var. Explained",xlab="PC #",ylim=c(0,1))
+cumulative.prop<-cumsum(eigenvals2/sum(eigenvals2))
+lines(cumulative.prop,lty=2)
+legend("topleft", legend=c("Prop","Cumulative"),
+       lty=1:2, cex=0.8)
+
+
+data.frame(PC=1:length(eigenvals2),Prop=eigenvals2/sum(eigenvals2),Cumulative=cumulative.prop)
+
+# Calculate the variance explained by each principal component
+var_explained <- pc.result2$sdev^2 / sum(pc.result2$sdev^2)
+cum_var_explained <- cumsum(var_explained)
+
+# Find the number of components that explain at least 90% of the variance
+num_comp_90 <- which(cum_var_explained >= 0.9)[1]
+
+# Print the number of components
+print(num_comp_90) #We would need 4 to retain approximately 90%
+
+
+
+#Plotting PCA variables with the two colors:
+
+pc.result2<-prcomp(train_data[,-c(2,3,4,5,6,7,8,9,10,13,17,18,19)],scale.=TRUE)
+PC <- data.frame(diagnosis = train_data$y)
+PC$PC1 <- pc.result2$x[,1]
+PC$PC2 <- pc.result2$x[,2]
+PC$PC3 <- pc.result2$x[,3]
+PC$PC4 <- pc.result2$x[,4]
+ggpairs(PC[,-1],aes(color=PC[,1]))
+
+
+
+
+
+
+############GLMNET Model
+
 
 # Prepare the matrix of predictors
 x <- model.matrix(~ . - 1 - y, data = train_data) # Excludes the intercept and the response variable
@@ -151,12 +279,6 @@ glmnet_fit <- train(x, y = train_data$y,
 # View the best model's lambda value and corresponding coefficients
 best_lambda <- glmnet_fit$bestTune$lambda
 coef(glmnet_fit$finalModel, s = best_lambda)
-
-
-
-
-
-
 
 
 
