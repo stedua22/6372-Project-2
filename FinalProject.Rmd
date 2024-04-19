@@ -836,7 +836,18 @@ summary(model)
 vif(model)
 ```
 <br/>
-Now the VIFs are much more resonable without euribor3m.  So we chose the simpler model for our Simple Logistic Regression Model.
+Now the VIFs are much more resonable without euribor3m.  So we chose the simpler model for our Simple Logistic Regression Model. <br/>
+<br/>
+
+Now that we have a model, we look at the model coefficients for interpretations.
+```{r}
+train_data$y <- relevel(train_data$y, ref="no")
+mod <- glm(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx, data = train_data, family = "binomial")
+summary(mod)
+exp(mod$coefficients)
+exp(confint(mod))
+train_data$y <- relevel(train_data$y, ref="yes")
+```
 
 # Objective 2: Complex Logistic Regerssion Model
 For the second model, we looked into adding polynomial terms and/or interaction terms to the regression model.
