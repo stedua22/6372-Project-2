@@ -7,6 +7,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+
 ```
 
 # EDA
@@ -574,6 +576,8 @@ train_data_sorted %>% ggplot(aes(x=num, y=emp.var.rate, color=y)) + geom_jitter(
 
 #make sure "success" level is defined as "yes"
 str(train_data$y)
+train_data$num <- c()
+
 
 #PCA
 df.numericPC <- train_data[ , sapply(train_data, is.numeric)]
@@ -616,7 +620,8 @@ print(num_comp_90) #We would need 5 to retain approximately 90%
 
 #Plotting PCA variables with the two colors:
 
-pc.result<-prcomp(train_data[,-c(2,3,4,5,6,7,8,9,13,19)],scale.=TRUE)
+
+pc.result<-prcomp(df.numericPC,scale.=TRUE)
 PC <- data.frame(diagnosis = train_data$y)
 PC$PC1 <- pc.result$x[,1]
 PC$PC2 <- pc.result$x[,2]
@@ -648,9 +653,10 @@ ggplot(data = pc.scores, aes(x = PC4, y = PC5)) +
 
 # PCA without campaign, euribor3m,and nr.employed as they are more like factors and not continuous
 
+
 #Performing PCA on predictors
 
-df.numeric2 <- train_data[,-c(2,3,4,5,6,7,8,9,10,13,17,18,19)]
+df.numeric2 <- df.numericPC[,-c(2,8,9)]
 pc.result2<-prcomp(df.numeric2,scale.=TRUE)
 pc.scores2<-pc.result2$x
 pc.scores2<-data.frame(pc.scores2)
@@ -690,7 +696,7 @@ print(num_comp_90) #We would need 4 to retain approximately 90%
 
 #Plotting PCA variables with the two colors:
 
-pc.result2<-prcomp(train_data[,-c(2,3,4,5,6,7,8,9,10,13,17,18,19)],scale.=TRUE)
+pc.result<-prcomp(df.numeric2[,-c(2,8,9)],scale.=TRUE)
 PC <- data.frame(diagnosis = train_data$y)
 PC$PC1 <- pc.result2$x[,1]
 PC$PC2 <- pc.result2$x[,2]
@@ -705,6 +711,10 @@ ggpairs(PC[,-1],aes(color=PC[,1]))
 #GLMNET Model
 
 ```{r}
+library(readr)
+library(GGally)
+library(caret)
+library(ggcorrplot)
 # Prepare the matrix of predictors
 x <- model.matrix(~ . - 1 - y, data = train_data) # Excludes the intercept and the response variable
 
@@ -1271,6 +1281,11 @@ The training metrics were poor, with an F1 score of around .25 for both models. 
 #QDA/LDA Model
 
 ```{r}
+library(caret) # CreateFolds
+library(pROC)
+library(car) # VIF
+library(tidyverse)
+
 
 #LDA Model--- simple model month + poutcome + emp.var.rate + contact + cons.price.idx
 
