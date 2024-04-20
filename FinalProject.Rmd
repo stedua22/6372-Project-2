@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```
+Youtube Link: https://youtu.be/oeHvLTXBvNQ?si=Wxctb9p1mOr-wJOV
 
 # EDA
 The first thing that is done when you get a dataset is to peform an Exploratory Data Anslysis, to see what characteristics the data has.  The variable we are trying to predict is the y column whic represents if the client has subscribed to a term deposit.  The possible values are "yes" or "no".
