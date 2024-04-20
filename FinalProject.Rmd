@@ -1993,9 +1993,9 @@ for (i in 1:num_thresh){
 # Get threshold value that maximizes F1
 # Get F1 thresholds
 maxF1 <- max(metrics$f1, na.rm = TRUE) # 
-maxF1  # 0.9468
+maxF1  # 0.4593
 theshF1 <- metrics$thresh[which.max(metrics$f1)] 
-theshF1 # 0.608
+theshF1 # 0.004
 
 # Test data
 predicted <- predict(fitted_rf, newdata = test_data, type = "prob")['yes']
@@ -2010,7 +2010,6 @@ Prevalence <- CM$byClass["Prevalence"]
 PPV <- CM$byClass["Pos Pred Value"]
 NPV <- CM$byClass["Neg Pred Value"]
 F1 <- (2 * Sensitivity * PPV)/(Sensitivity + PPV)
-F1_pred <- confusion_matrix$byClass['F1']
 
 #AUROC
 predicted_classes <- factor(predicted_classes, levels = c("yes", "no"))
@@ -2018,13 +2017,13 @@ roc_rf <- roc(response=test_data$y,predictor= as.numeric(predicted_classes),leve
 auroc <- auc(roc_rf)
 
 #printing merics
-cat("F1-pred: ", F1_pred, "\n") # 0.9400
-cat("Sensitivity: ", Sensitivity, "\n") #0.2393
-cat("Specificity: ", Specificity, "\n") #0.9829
+cat("F1: ", F1, "\n") # 0.4380
+cat("Sensitivity: ", Sensitivity, "\n") #0.3820
+cat("Specificity: ", Specificity, "\n") #0.9550
 cat("Prevalence: ", Prevalence, "\n") #0.1106
-cat("PPV: ", PPV, "\n") #0.6356
-cat("NPV: ", NPV, "\n") #0.9122
-cat("AUROC: ", auroc, "\n") #0.6111
+cat("PPV: ", PPV, "\n") #0.5133
+cat("NPV: ", NPV, "\n") #0.9255
+cat("AUROC: ", auroc, "\n") #0.6685
 
 ```
 
@@ -2049,7 +2048,7 @@ library(randomForest)
 # Convert the binary outcome to a factor
 train_data$y <- as.factor(train_data$y)
 
-fitted_rf1.2 <-randomForest(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx, data=train_data, ntree=6000, importance = TRUE, keep.forest=TRUE, mtry=2)
+fitted_rf1.2 <-randomForest(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx, data=train_data, ntree=5000, importance = TRUE, keep.forest=TRUE, mtry=3)
 
 ```
 
@@ -2131,12 +2130,12 @@ for (i in 1:num_thresh){
 # Get threshold value that maximizes F1
 # Get F1 thresholds
 maxF1 <- max(metrics$f1, na.rm = TRUE) # 
-maxF1  #0.9468
+maxF1  #0.4605
 theshF1 <- metrics$thresh[which.max(metrics$f1)] 
-theshF1 # 0.4957
+theshF1 # 0.0034
 
 # Test data
-predicted <- data.frame(predict(fitted_rf1.2, newdata = test_data, type = "prob"))[2]
+predicted <- data.frame(predict(fitted_rf1.2, newdata = test_data, type = "prob"))['yes']
 predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
 CM <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
 CM
@@ -2147,7 +2146,7 @@ Specificity <- CM$byClass["Specificity"]
 Prevalence <- CM$byClass["Prevalence"]
 PPV <- CM$byClass["Pos Pred Value"]
 NPV <- CM$byClass["Neg Pred Value"]
-F1_pred <- confusion_matrix$byClass['F1']
+F1 <- (2 * Sensitivity * PPV)/(Sensitivity + PPV)
 
 #AUROC
 predicted_classes <- factor(predicted_classes, levels = c("yes", "no"))
@@ -2155,7 +2154,7 @@ roc_rf <- roc(response=test_data$y,predictor= as.numeric(predicted_classes),leve
 auroc <- auc(roc_rf)
 
 
-cat("F1-pred: ", F1_pred, "\n")
+cat("F1: ", F1, "\n")
 cat("Sensitivity: ", Sensitivity, "\n") 
 cat("Specificity: ", Specificity, "\n") 
 cat("Prevalence: ", Prevalence, "\n") 
@@ -2164,14 +2163,13 @@ cat("NPV: ", NPV, "\n")
 cat("AUROC: ", auroc, "\n")
 
 # Results:
-# F1-pred:  0.9400203 
-# Sensitivity:  0.2447859 
-# Specificity:  0.9826668 
+# F1:  0.4405507 
+# Sensitivity:  0.3863886 
+# Specificity:  0.9542787 
 # Prevalence:  0.1105851 
-# PPV:  0.6371429 
-# NPV:  0.9127789 
-# AUROC:  0.6137264 
-
+# PPV:  0.5123726 
+# NPV:  0.9259701 
+# AUROC:  0.6703336 
 
 ```
 
