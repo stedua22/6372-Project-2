@@ -1,0 +1,1211 @@
+---
+title: "Final Project - Bank Dataset"
+author: "Aaron Abromowitz, Stephanie Duarte, Dammy Owolabi"
+date: "2024-04-20"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+```
+
+# Before Part 2
+```{r}
+library(tidyverse)
+
+# Pull in data
+data<-read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/bank-additional-full.csv',stringsAsFactors = T, sep=";")
+
+# Set levels to use for later
+data$y <- relevel(data$y, ref="yes")
+data$month <- factor(data$month, levels=c('mar','apr','may','jun','jul','aug','sep','oct','nov','dec'))
+data$day_of_week <- factor(data$day_of_week, levels=c('mon','tue','wed','thu','fri'))
+
+# Duration was removed since the dataset explanation file said that it was created after y variable was known, so shouldn't be used for prediction.
+data$duration <- c()
+data$default <- c()
+
+# Create the train and test split
+train_perc <- .8
+set.seed(1234)
+train_indices <- sample(nrow(data), floor(train_perc * nrow(data)))
+train_data <- data[train_indices, ]
+nrow(train_data)
+test_data <- data[-train_indices, ] 
+nrow(test_data)
+```
+
+#GLMNET Model
+
+```{r}
+
+library(readr)
+library(GGally)
+library(caret)
+library(ggcorrplot)
+# Prepare the matrix of predictors
+x <- model.matrix(~ . - 1 - y, data = train_data) # Excludes the intercept and the response variable
+
+# Define the trainControl with classProbs enabled
+fitControl <- trainControl(method = "cv", 
+                           number = 10, 
+                           classProbs = TRUE, # Enable class probability predictions
+                           summaryFunction = twoClassSummary) # Use a summary function for classification
+
+# Run the glmnet model
+set.seed(1234) # for reproducibility
+glmnet_fit <- train(x, y = train_data$y, 
+                    method = "glmnet",
+                    trControl = fitControl,
+                    tuneLength = 10, # Number of lambda values to test
+                    metric = "ROC") # Optimize the model based on ROC curve
+
+# View the best model's lambda value and corresponding coefficients
+best_lambda <- glmnet_fit$bestTune$lambda
+coef(glmnet_fit$finalModel, s = best_lambda)
+
+
+```
+<br/>
+There definitely is a change in the data over time.  We may re-visit this later on.
+
+# Objective 1: Simple Logistic Regerssion Model
+We used a combination of forward and backward selection to determine a simple logistic regression model that performed well on the data.  We did this by adding each variable to a model, and then doing Cross Validation to test the out of sample data on AUROC (Area under the ROC curve).  We used 10 folds. <br/>
+<br/>
+After we chose the first variable, we then did this to add more variables to see if those increased the AUROC.  We also tried removing variables (once we got three of them) to see if that improved the score.  Below, I included example code for this logic.  It takes several minutes to run though, so it is not set to evaluate the code. <br/>
+<br/>
+One caveat is that since the Default variable only has 2 Yes values, it can cause errors sometimes during the cross validation.  This happens when the training data (a randomly chosen 90%) doesn't have either of those values, and the test data (the other 10%) has both of them.  This only happens 1% of the time, but when you are running 100s of tests, this happens regularly.  And since Default didn't increase the AUROC much anyways, we decided to drop the variable.
+```{r}
+train_data$default <- c()
+```
+
+```{r, eval = FALSE}
+# Forward Selection Example
+set.seed(21)
+vars <- names(train_data)
+vars <- vars[vars!="y"]
+num_vars <- length(vars)
+var_aucs <- data.frame("vars" = vars)
+num_folds <- 10
+for (j in 1:num_vars) {
+  var <- vars[j]
+  print(var)
+  folds <- createFolds(train_data$y, k = num_folds)
+  auc_scores <- numeric(num_folds)
+  for (i in 1:num_folds) {
+    train_indices <- unlist(folds[-i])
+    test_indices <- unlist(folds[i])
+    train <- train_data[train_indices, ]
+    test <- train_data[test_indices, ]
+    form <- as.formula(paste("y ~ ",var,sep=""))
+    model <- glm(form, data = train, family = "binomial")
+    predictions <- predict(model, newdata = test, type = "response")
+    roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+    auc_scores[i] <- auc(roc)
+  }
+  var_aucs$auc[var_aucs$var == var] <- mean(auc_scores)
+}
+
+# Backward selection example
+set.seed(24)
+start_form_str <- 'y ~ nr.employed + month + poutcome'
+vars <- c('nr.employed','month','poutcome')
+num_vars <- length(vars)
+var_aucs <- data.frame("vars" = vars)
+num_folds <- 10
+for (j in 1:num_vars) {
+  var <- vars[j]
+  print(var)
+  folds <- createFolds(train_data$y, k = num_folds)
+  auc_scores <- numeric(num_folds)
+  for (i in 1:num_folds) {
+    train_indices <- unlist(folds[-i])
+    test_indices <- unlist(folds[i])
+    train <- train_data[train_indices, ]
+    test <- train_data[test_indices, ]
+    form <- as.formula(paste(start_form_str," -",var,sep=""))
+    model <- glm(form, data = train, family = "binomial")
+    predictions <- predict(model, newdata = test, type = "response")
+    roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+    auc_scores[i] <- auc(roc)
+  }
+  var_aucs$auc[var_aucs$var == var] <- mean(auc_scores)
+}
+```
+<br/>
+After we did this until the AUROC didn't increase any more, the resulting model was y ~ month + poutcome + emp.var.rate + euribor3m + contact + cons.price.idx.  We then checked the p values and VIR to see if it made sense to keep all of those variables.
+
+```{r}
+library(car)
+model <- glm(y ~ month + poutcome + emp.var.rate + euribor3m + contact + cons.price.idx, data = train_data, family = "binomial")
+summary(model)
+vif(model)
+```
+<br/>
+The p values were all significant at the 0.05 level, but there was a high amount of correlation between emp.var.rate and euribor3m.  So we removed euribor3m to see if that didn't make the model too much worse.
+
+```{r}
+library(caret)
+library(pROC)
+set.seed(80)
+form <- as.formula('y ~ month + poutcome + emp.var.rate + contact + cons.price.idx')
+num_folds <- 10
+folds <- createFolds(train_data$y, k = num_folds)
+accuracy_scores <- numeric(num_folds)
+auc_scores <- numeric(num_folds)
+for (i in 1:num_folds) {
+  train_indices <- unlist(folds[-i])
+  test_indices <- unlist(folds[i])
+  train <- train_data[train_indices, ]
+  test <- train_data[test_indices, ]
+  model <- glm(form, data = train, family = "binomial")
+  predictions <- predict(model, newdata = test, type = "response")
+  roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+  auc_scores[i] <- auc(roc)
+}
+mean(auc_scores)  
+```
+<br/>
+It wasn't too much worse.  And removing the correlation between those two variables makes the model easier to interpret.
+
+```{r}
+model <- glm(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx, data = train_data, family = "binomial")
+summary(model)
+vif(model)
+```
+<br/>
+Now the VIFs are much more resonable without euribor3m.  So we chose the simpler model for our Simple Logistic Regression Model. <br/>
+<br/>
+
+Now that we have a model, we look at the model coefficients for interpretations.
+```{r}
+train_data$y <- relevel(train_data$y, ref="no")
+mod <- glm(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx, data = train_data, family = "binomial")
+summary(mod)
+odds_ratio <- exp(mod$coefficients)
+confident_interval <- exp(confint(mod))
+train_data$y <- relevel(train_data$y, ref="yes")
+```
+Interpretations (interpreting individually):
+
+Monthapr
+The odds of getting the clients subscribing to a term deposit in the month of April is 0.255 times lower than that of  subscribing in the month of March with a CI of (0.204, 0.319)
+
+Monthmay
+The odds of getting the clients subscribing to a term deposit in the month of May is 0.152 times lower than that of  subscribing in the month of March with a CI of (0.123, 0.188)
+
+Monthjun
+The odds of getting the clients subscribing to a term deposit in the month of June is 0.229 times lower than that of  subscribing in the month of March with a CI of (0.182, 0.289).
+
+Monthjul
+The odds of getting the clients subscribing to a term deposit in the month of July is 0.359 times lower than that of  subscribing in the month of March with a CI of (0.285, 0.452).
+
+Monthaug
+The odds of getting the clients subscribing to a term deposit in the month of August is 0.500 times lower than that of  subscribing in the month of March with a CI of (0.399, 0.629)
+
+Monthsep
+The odds of getting the clients subscribing to a term deposit in the month of September is 0.362 times lower than that of  subscribing in the month of March with a CI of (0.273, 0.479)
+
+Monthoct
+The odds of getting the clients subscribing to a term deposit in the month of October is 0.356 times lower than that of  subscribing in the month of March with a CI of (0.272, 0.465)
+
+Monthnov
+The odds of getting the clients subscribing to a term deposit in the month of November is 0.236 times lower than that of  subscribing in the month of March with a CI of (0.187, 0.298)
+
+Monthdec
+The odds of getting the clients subscribing to a term deposit in the month of December is 0.574 times lower than that of  subscribing in the month of March with a CI of (0.380, 0.868)
+
+poutcomenonexistent
+The odds of getting the clients subscribing to a term deposit based on a nonexistent outcome of the previous campaign is 1.54 times higher than that of  a failed outcome with a CI of (1.37, 1.73)
+
+poutcomesuccess
+The odds of getting the clients subscribing to a term deposit based on a succesful outcome of the previous campaign is 6.17 times higher than that of  a failed outcome with a CI of (5.21, 7.31)
+
+emp.var.rate
+For every 1 unit increase in customer subscription to a term deposit, the odds of the customer subscribing based on the employment variation rate decreases by 56.2% with a CI of (58.1%, 54.3%)
+
+contacttelephone
+The odds of getting the clients subscribing to a term deposit based on the contact communication type is 0.647 times lower than that of subscribing by cell phone with a CI of (0.575, 0.728)
+
+cons,price.idx
+For every 1 unit increase in customer subscription to a term deposit, the odds of the customer subscribing based on the consumers price index increases by a factor of 3.14 with a CI of (2.82, 3.50)
+
+
+# Objective 2: Complex Logistic Regerssion Model
+For the second model, we looked into adding polynomial terms and/or interaction terms to the regression model.
+
+## Polynomial Terms
+To see if it made sense to add some polynomial terms we looked at what happened with adding those for Number of Employees, since that was the first variable added during Forward Selection (although it got removed later).
+```{r}
+library(tidyverse)
+
+# Make a nr.employed^2 variable
+train_data$ne2 = (train_data$nr.employed)^2
+
+# Plot nr.employed
+summary <- train_data %>%
+  group_by(nr.employed,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=nr.employed,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Number Employed') + ggtitle('Number Employed Based on Y Value')
+
+# Plot nr.employed^2
+summary <- train_data %>%
+  group_by(ne2,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=ne2,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Number Employed') + ggtitle('Number Employed Squared Based on Y Value')
+```
+<br/>
+These plots look very hard to distinguish.  So instead of plotting polynomial terms, we tried creating simple models and then calculating out of sample AUC.  If this increases as polynomial degree increases, then it could make sense to include polynomial terms.
+
+```{r}
+# Maybe just plot the improvement of out of sample AUC
+set.seed(120)
+vars <- 'nr.employed'
+allVars <- vars
+num_poly <- 10
+for (i in 1:length(vars)){
+  for (j in 2:num_poly){
+    if (class(train_data[,vars[i]]) != "factor") {
+      allVars <- c(allVars,paste('poly(',vars[i],',',j,')',sep=""))
+    }
+  }
+}
+num_vars <- length(allVars)
+var_aucs <- data.frame("vars" = allVars)
+num_folds <- 10
+for (j in 1:num_vars) {
+  var <- allVars[j]
+  print(var)
+  folds <- createFolds(train_data$y, k = num_folds)
+  auc_scores <- numeric(num_folds)
+  for (i in 1:num_folds) {
+    train_indices <- unlist(folds[-i])
+    test_indices <- unlist(folds[i])
+    train <- train_data[train_indices, ]
+    test <- train_data[test_indices, ]
+    form <- as.formula(paste("y ~ ",var,sep=""))
+    model <- glm(form, data = train, family = "binomial")
+    predictions <- predict(model, newdata = test, type = "response")
+    roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+    auc_scores[i] <- auc(roc)
+  }
+  var_aucs$auc[var_aucs$var == var] <- mean(auc_scores)
+}
+
+# Get max val
+maxAUC <- max(var_aucs$auc, na.rm = TRUE)
+maxDeg <- which.max(var_aucs$auc)
+
+# Looking at the p values for the highest degree model
+model <- glm(form, data = train_data, family = "binomial")
+summary(model) 
+
+# Plot the AUC improving
+var_aucs %>% ggplot(aes(x=1:10, y=auc)) + geom_point() + ylim(c(0.7,0.8)) + 
+  ylab('AUC') + xlab('Polynomial Degree') + ggtitle('Out of Sample AUC for nr.employed') + 
+  geom_point(data = data.frame(x = maxDeg, y = maxAUC), 
+             aes(x = x, y = y), size = 2, color = "red", fill = "red", shape = 21)
+```
+You can see from the plot that there is a pretty substantial increase in performance after 4 polynomial terms.  It levels off after that, but the maximum AUC is technically at n = 9.  And even the model for n = 10 shows that many of the higher degree terms are statistically significant, including the 10th term.<br/>
+<br/>
+
+We will proceed with trying forward selection using polynomial terms.  Using up to the 10th degree term seems like it should be sufficient.
+
+## Variable Interactions
+Variable interactions are often present that affect numeric response variables.  Usually to show that, you can plot.  To see if there are possible interactions, let's try with a coloring a couple of interactions.
+
+```{r}
+# Try plotting month by contact
+train_data %>% ggplot(aes(x=month,y=contact,color=y)) + geom_jitter() + 
+  ylab('Month') + xlab('Contact') + ggtitle('Term Deposit for Month and Contact')
+
+# Looking at model
+model <- glm('y ~ month*contact', data = train_data, family = "binomial")
+summary(model)
+
+# Try plotting month by day of week
+train_data %>% ggplot(aes(x=month,y=day_of_week,color=y)) + geom_jitter() + 
+  ylab('Month') + xlab('Day of Week') + ggtitle('Term Deposit for Month and Day of Week')
+
+# Looking at model
+model <- glm('y ~ month*day_of_week', data = train_data, family = "binomial")
+summary(model)
+```
+It looks like there is some promise for variable interactions.  When looking at Month vs Day of Week, certain months have days that have a different distribution of yes and no.  And certain days have months that have a different distribution.  Some of the interaction terms also have significant p values. <br/>
+We will also include interaction terms in the Forward Selection, along with the polynomial terms.  Below is some example code (not being evaluate, because it takes over an hour to finish) of adding all the single variables, polynomial variables, and interaction terms to the model.
+```{r, eval = FALSE}
+set.seed(70)
+vars <- colnames(train_data)
+vars <- vars[vars!="y"]
+allVars <- vars
+num_poly <- 10
+for (i in 1:length(vars)){
+  for (j in 2:num_poly){
+    if (class(train_data[,vars[i]]) != "factor") {
+      allVars <- c(allVars,paste('poly(',vars[i],',',j,')',sep=""))
+    }
+  }
+}
+for (i in 1:length(vars)){
+  for (j in 1:i){
+    if(vars[i]!=vars[j]) {
+      allVars <- c(allVars,paste(vars[i],'*',vars[j],sep=''))
+    }
+  }
+}
+# These variables need to be removed so the code doesn't error out
+allVars <- allVars[allVars!="poly(pdays,6)"] 
+allVars <- allVars[allVars!="poly(pdays,7)"]
+allVars <- allVars[allVars!="poly(pdays,8)"]
+allVars <- allVars[allVars!="poly(pdays,9)"]
+allVars <- allVars[allVars!="poly(pdays,10)"]
+allVars <- allVars[allVars!="poly(previous,7)"]
+allVars <- allVars[allVars!="poly(previous,8)"]
+allVars <- allVars[allVars!="poly(previous,9)"]
+allVars <- allVars[allVars!="poly(previous,10)"]
+allVars <- allVars[allVars!="poly(emp.var.rate,10)"]
+var_aucs <- data.frame("vars" = allVars)
+num_vars <- length(allVars)
+num_folds <- 10
+start_num <- 124
+for (j in start_num:num_vars) {
+  var <- allVars[j]
+  print(paste(j,'/',num_vars,': ',var,sep=''))
+  folds <- createFolds(train_data$y, k = num_folds)
+  auc_scores <- numeric(num_folds)
+  for (i in 1:num_folds) {
+    train_indices <- unlist(folds[-i])
+    test_indices <- unlist(folds[i])
+    train <- train_data[train_indices, ]
+    test <- train_data[test_indices, ]
+    form <- as.formula(paste("y ~ ",var,sep=""))
+    model <- glm(form, data = train, family = "binomial")
+    predictions <- predict(model, newdata = test, type = "response")
+    roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+    auc_scores[i] <- auc(roc)
+  }
+  var_aucs$auc[var_aucs$var == var] <- mean(auc_scores)
+}
+```
+After several iterations of this (plus Backwards Selection), we arrived at the final model: y ~ poly(cons.conf.idx,10) + pdays + day_of_week * month + month * contact + cons.conf.idx * housing + poutcome * previous + poly(campaign,5) + poly(euribor3m,8)  + campaign * month + cons.conf.idx * age + poly(previous,6) + campaign * contact + poly(age,3).
+
+## Adding PCA
+Since our earlier PCA analysis looked promising, I tried adding PC1 to the model.
+```{r, warning=FALSE}
+# PCA
+df.numeric <- train_data[ , sapply(train_data, is.numeric)]
+pc.result<-prcomp(df.numeric,scale.=TRUE)
+pc.scores<-pc.result$x
+pc.scores<-data.frame(pc.scores)
+
+# Trying out adding PC1
+train_data$PC1 <- pc.scores$PC1
+set.seed(134)
+form <- as.formula('y ~ PC1 + poly(cons.conf.idx,10) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,6) + campaign*contact + poly(age,3)')
+num_folds <- 10
+folds <- createFolds(train_data$y, k = num_folds)
+accuracy_scores <- numeric(num_folds)
+auc_scores <- numeric(num_folds)
+for (i in 1:num_folds) {
+  train_indices <- unlist(folds[-i])
+  test_indices <- unlist(folds[i])
+  train <- train_data[train_indices, ]
+  test <- train_data[test_indices, ]
+  model <- glm(form, data = train, family = "binomial")
+  predictions <- predict(model, newdata = test, type = "response")
+  roc <- roc(response=test$y,predictor=predictions,levels=c("no", "yes"),direction = ">")
+  auc_scores[i] <- auc(roc)
+}
+mean(auc_scores)
+```
+The AUC value was slightly worse than it was when PC1 wasn't there.  So we'll just use the formula derived above.
+
+## Support Vector Machine (SVM)
+For a non-parametric model, we tried Support Vector Machines (SVM).  These are a type of non-parametric model that try to form a line, plane, hyper-plan between datapoints. <br/>
+<br/>
+
+They had three important hyper parameters: the kernal, gamma, and the cost.  The kernal would be the type of fit.  Possible values are linear, polynomial, radial, etc.  Gamma sets the curvature of the separating hyper-plane.  A higher Gamma values means more curvature.  The Cost parameter sets how much error points it wants to classify on.  The higher the Cost, the worse it predicts on the training set errors (and hope isn't overfitting). <br/>
+<br/>
+
+Here is some example code for training the SVM.  It takes over half an hour to train even fairly simple models, so it isn't set to execute.
+
+```{r, eval = FALSE}
+form <- as.formula("y ~ euribor3m + month + poutcome + contact + cons.conf.idx + campaign + previous + age + housing + day_of_week")
+svm_model <- svm(form, data = train_data, kernel = "radial", gamma = 1, cost = 1, probability = TRUE, decision.values = TRUE)
+predictions <- predict(svm_model, newdata = train_data, probability = TRUE, decision.values = TRUE)
+probs <- attr(predictions,"probabilities")[,'yes']
+predicted_classes <- ifelse(probs > .083, 'yes','no') 
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+confusion_matrix # PPV = 0.69, Sens = 0.62
+confusion_matrix$byClass['F1'] # 0.65
+roc <- roc(response=train_data$y,predictor=probs,levels=c("yes", "no"),direction = ">")
+auc(roc) # 0.8513
+plot(roc,print.thres="best",col="red")
+title(main = 'ROC Curve for SVM', line = 3)
+```
+<br/>
+And here is the sample code for testing.
+
+```{r, eval = FALSE}
+predictions <- predict(svm_model, newdata = test_data, probability = TRUE)
+probs <- attr(predictions,"probabilities")[,'yes']
+predicted_classes <- ifelse(probs > .083, 'yes','no') 
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.5236, Specificity = 0.8705, PPV = 0.3345, NPV = 0.9363
+confusion_matrix$byClass['F1'] # 0.4082157
+roc <- roc(response=test_data$y,predictor=probs,levels=c("yes", "no"),direction = ">")
+auc(roc) # 0.6979
+```
+
+# Calculating Metrics
+We are calculating Sensitivity (Correctly Predicted Positive / All Positive), Specificity (Correctly Predicted Negative / All Negative), Prevalence (All Positive / All Observations), PPV (Correctly Predicted Positive / Predicted Positive), NPV (Correctly Predicted Negative / Predicted Negative), and AUROC (Area under the ROC Curve). <br/>
+<br/>
+
+In addition, we are also calculating the F1 score.  This is equal to 2 * Sensitivity * PPV / (Sensitivity + PPV).  Since it is more important that we do a good job of predicting whether people will get a term deposit, and the F1 score is a nice metric to make sure that there is a good balance between Sensitivity and PPV, we decided to track this metric as well.
+
+## Simple Logisitc Regression Model
+First we determined the threshold to use for the Simple Logistic Regression Model in order to maximize the F1 metric.
+
+```{r}
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 0
+metrics$specificity <- 0
+metrics$ppv <- 0
+metrics$npv <- 0
+metrics$accuracy <- 0
+metrics$f1 <- 0
+form <- as.formula(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx)
+model <- glm(form, data = train_data, family = "binomial")
+predicted <- predict(model, newdata = train_data, type = "response")
+```
+
+```{r, eval = FALSE}
+for (i in 1:num_thresh){
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted > metrics$thresh[i], 'no','yes')
+  confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+```
+```{r}
+# Get threshold value that maximizes F1
+metrics <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/metrics_simple.csv')
+maxF1 <- max(metrics$f1, na.rm = TRUE)
+maxF1
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1
+
+# Plots
+metrics %>% ggplot(aes(x = thresh, y = sensitivity)) + geom_point() + 
+  ylab('Sensitivity') + xlab('Thresholds') + ggtitle('Sensitivity for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = specificity)) + geom_point() + 
+  ylab('Specificity') + xlab('Thresholds') + ggtitle('Specificity for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = ppv)) + geom_point() + 
+  ylab('PPV') + xlab('Thresholds') + ggtitle('PPV for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = npv)) + geom_point() + 
+  ylab('NPV') + xlab('Thresholds') + ggtitle('NPV for Training Data')
+metrics %>% ggplot(aes(x = thresh, y = f1)) + geom_point() + 
+  ylab('F1 Score') + xlab('Thresholds') + ggtitle('F1 Scores for Training Data') + 
+  geom_point(data = data.frame(x = theshF1, y = maxF1), aes(x = x, y = y), size = 3, color = "red", fill = "red", shape = 21)
+
+# Get Confusion Matrix for threshold value
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+confusion_matrix
+confusion_matrix$byClass['F1']
+```
+<br/>
+After we got the thresholds to use, then we calculated the metrics on the test dataset.
+
+```{r}
+# Test data
+predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix
+confusion_matrix$byClass['F1']
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc)
+plot(roc,print.thres="best",col="red")
+```
+<br/>
+This code takes a while to run, so we won't include the code to maximize the threshold value going forward.  Given the thresholds though, here is the code to get the metrics for the complicated logistic regression model.
+
+## Complex Logistic Regression
+
+```{r}
+# Get threshold value that maximizes F1
+metrics <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/metrics_complex_logistic.csv')
+maxF1 <- max(metrics$f1, na.rm = TRUE)
+maxF1
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1
+
+# Get Confusion Matrix for threshold value
+form <- as.formula(y ~ poly(cons.conf.idx,10) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,6) + campaign*contact + poly(age,3))
+model <- glm(form, data = train_data, family = "binomial")
+predicted <- predict(model, newdata = train_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+confusion_matrix
+confusion_matrix$byClass['F1']
+
+# Test data
+predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix
+confusion_matrix$byClass['F1']
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc)
+plot(roc,print.thres="best",col="red")
+```
+
+## Comparing old vs new data
+We noticed as part of EDA that the newer data (data was in order of when it was received) had a different Yes/No distribution than older data.  We thought it would be interesting to see how training on old data and testing on newer data would perform.
+
+```{r}
+# Simple logistic model
+metrics <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/metrics_simple_date.csv')
+
+# Train simple model
+form <- as.formula(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx)
+model <- glm(form, data = train_data, family = "binomial")
+
+# Get threshold value that maximizes F1
+maxF1 <- max(metrics$f1, na.rm = TRUE)
+maxF1 # 0.2623695
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.8486
+
+# Try filtering data to get it to work
+test_data <- test_data[test_data$month != "sep",]
+
+# Get the confusion matrix
+predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.5661, Specificity = 0.7740, PPV = 0.5151, NPV = 0.8079, Prevalence = 0.2979
+confusion_matrix$byClass['F1'] # 0.5394243 
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc) # 0.7095
+
+# Complex model
+metrics <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/metrics_complex_logistic_date.csv')
+
+# Train simple model
+form <- as.formula(y ~ poly(cons.conf.idx,10) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,6) + campaign*contact + poly(age,3))
+model <- glm(form, data = train_data, family = "binomial")
+
+# Error about poly(cons.conf.idx,10) having too high of a degree
+form <- as.formula(y ~ poly(cons.conf.idx,9) + pdays + day_of_week*month + month*contact + cons.conf.idx*housing + poutcome*previous + poly(campaign,5) + poly(euribor3m,8)  + campaign*month + cons.conf.idx*age + poly(previous,3) + campaign*contact + poly(age,3))
+model <- glm(form, data = train_data, family = "binomial")
+
+# Get threshold value that maximizes F1
+maxF1 <- max(metrics$f1, na.rm = TRUE)
+maxF1 # 0.2431846
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.7308
+
+# Try filtering data to get it to work
+test_data <- test_data[test_data$month != "sep",]
+
+# Get the confusion matrix
+predicted <- predict(model, newdata = test_data, type = "response")
+predicted_classes <- ifelse(predicted > theshF1, 'no','yes')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.6287, Specificity = 0.6716, PPV = 0.4482, NPV = 0.8100, Prevalence = 0.2979
+confusion_matrix$byClass['F1'] # 0.5233236 
+
+# AUC
+roc <- roc(response=test_data$y,predictor=predicted,levels=c("no", "yes"),direction = ">")
+auc(roc) # 0.6502
+```
+
+We compared the simple model and complex model to how they did previously.  To even be able to test against the newer data, we first had to filter out month = Sep, since that didn't exist in the training data.  Also, we had to lower the order of some of the polynomials for the complex model. <br/>
+<br/>
+
+The training metrics were poor, with an F1 score of around .25 for both models.  However, the F1 scores for the test data were both above 0.5.  The extra Yes results in the data seemed to help out.  However, the AUC scores were worse, as well as the Specificity and NPV.  This makes some sense, since there were less No results.
+
+
+#QDA/LDA Model
+
+```{r}
+library(caret) # CreateFolds
+library(pROC)
+library(car) # VIF
+library(tidyverse)
+
+
+#LDA Model--- simple model month + poutcome + emp.var.rate + contact + cons.price.idx
+
+# Convert the binary outcome to a factor
+train_data$y <- as.factor(train_data$y)
+
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+
+lda.fit<-train(y~ month + poutcome + emp.var.rate + contact + cons.price.idx,
+               data=train_data,
+               method="lda",
+               trControl=fitControl,
+               metric="logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(lda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1 # 0.4847
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.1313
+
+
+
+# Test data
+predicted <- predict(lda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.5159, Specificity = 0.9179, PPV = 0.4388, NPV = 0.9385, Prevalence = 0.11059
+confusion_matrix$byClass['F1'] # 0.4743
+
+
+#AUC
+
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = test_data$y, 
+                 predictor = as.numeric(as.character(predicted[, "yes"])),
+                 levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc) # 0.7846
+
+
+
+
+
+#LDA Model--- using numeric variables only campaign + pdays + previous + emp.var.rate + cons.price.idx + euribor3m + nr.employed
+
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+
+lda.fit<-train(y~ campaign + pdays + previous + emp.var.rate + cons.price.idx + euribor3m + nr.employed,
+               data=train_data,
+               method="lda",
+               trControl=fitControl,
+               metric="logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(lda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) 
+maxF1 #
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 
+
+
+
+
+# Test data
+predicted <- predict(lda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix 
+confusion_matrix$byClass['F1'] # 0.4640
+
+
+#AUC
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = test_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc)
+
+
+
+
+#LDA Model--- using numeric variables  pdays + previous + emp.var.rate + cons.price.idx  + nr.employed
+
+# Convert the binary outcome to a factor
+train_data$y <- as.factor(train_data$y)
+
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+
+lda.fit<-train(y~ pdays + previous + emp.var.rate + cons.price.idx + nr.employed,
+               data=train_data,
+               method="lda",
+               trControl=fitControl,
+               metric="logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(lda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1 #0.4744
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.1082
+
+
+
+
+# Test data
+predicted <- predict(lda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.51043, Specificity = 0.9143, PPV = 0.4254, NPV = 0.9376, Prevalence = 0.1106
+confusion_matrix$byClass['F1'] # 0.4641
+
+
+#AUC
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = test_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc) # 0.7599
+
+
+
+#LDA Model--- using numeric variables  emp.var.rate + cons.price.idx + euribor3m 
+
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+
+lda.fit<-train(y~  emp.var.rate + cons.price.idx + euribor3m ,
+               data=train_data,
+               method="lda",
+               trControl=fitControl,
+               metric="logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(lda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1  # 0.4561
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.2306
+
+
+
+
+# Test data
+predicted <- predict(lda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix  # Sensitivity = 0.4522, Specificity = 0.9335, PPV = 0.4583, NPV = 0.9320, Prevalence = 0.1106
+confusion_matrix$byClass['F1'] # 0.4552
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = test_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc) # 0.7506
+
+
+
+# Training data
+predicted <- predict(lda.fit, newdata = train_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+confusion_matrix 
+confusion_matrix$byClass['F1'] #0.4561
+
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = train_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(train_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc) # 0.7555
+
+plot(roc,print.thres="best",col="red")
+title(main = 'ROC Curve for LDA', line = 3)
+
+
+
+# QDA Model--simple model
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+qda.fit <- train(y~ month + poutcome + emp.var.rate + contact + cons.price.idx,
+                 data = train_data,
+                 method = "qda",
+                 trControl = fitControl,
+                 metric = "logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(qda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1  # 0.4692
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.0227
+
+
+
+
+# Test data
+predicted <- predict(qda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # Sensitivity = 0.5917, Specificity = 0.8781, PPV = 0.3764, NPV = 0.9453, Prevalence =0.1106
+confusion_matrix$byClass['F1'] # 0.4600
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc.qda <- roc(response = test_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc.qda) # 0.7811
+
+
+
+
+
+# QDA --- using numeric variables  pdays + previous + emp.var.rate + cons.price.idx  + nr.employed
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+qda.fit <- train(y~ pdays + previous + emp.var.rate + cons.price.idx  + nr.employed,
+                 data = train_data,
+                 method = "qda",
+                 trControl = fitControl,
+                 metric = "logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(qda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1  # 0.4382
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.0635
+
+
+
+
+# Test data
+predicted <- predict(qda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # accuracy = 0.8546, Sensitivity = 0.4951, Specificity = 0.8993, PPV = 0.3793, NPV = 0.9347, Prevalence =0.1106
+confusion_matrix$byClass['F1'] # 0.4295
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc.qda <- roc(response = test_data$y, 
+               predictor = as.numeric(as.character(predicted[, "yes"])),
+               levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc.qda) # 0.7527
+
+
+
+
+
+# QDA --- using numeric variables  emp.var.rate + cons.price.idx + euribor3m
+
+fitControl<-trainControl(method="repeatedcv",number=5,repeats=1,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(1234)
+
+qda.fit <- train(y~ emp.var.rate + cons.price.idx + euribor3m,
+                 data = train_data,
+                 method = "qda",
+                 trControl = fitControl,
+                 metric = "logLoss")
+
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 1
+metrics$specificity <- 1
+metrics$ppv <- 1
+metrics$npv <- 1
+metrics$accuracy <- 1
+metrics$f1 <- 1
+predicted <- predict(qda.fit, newdata = train_data, type = "prob")
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1  # 0.4681
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.1264
+
+
+
+
+# Test data
+predicted <- predict(qda.fit, newdata = test_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+confusion_matrix # accuracy = 0.8765, Sensitivity = 0.4829, Specificity = 0.9255, PPV = 0.4463, NPV = 0.9351, Prevalence = 0.1106
+confusion_matrix$byClass['F1'] # 0.4639
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc.qda <- roc(response = test_data$y, 
+               predictor = as.numeric(as.character(predicted[, "yes"])),
+               levels = rev(levels(test_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc.qda) # 0.7623
+
+
+# Training data
+predicted <- predict(qda.fit, newdata = train_data, type = "prob")
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+confusion_matrix <- confusionMatrix(as.factor(predicted_classes), as.factor(train_data$y))
+confusion_matrix 
+confusion_matrix$byClass['F1'] #0.4681
+
+
+# Assuming `predicted` contains the predicted probabilities for the 'yes' class
+roc <- roc(response = train_data$y, 
+           predictor = as.numeric(as.character(predicted[, "yes"])),
+           levels = rev(levels(train_data$y)))  # Ensure correct ordering of levels if needed
+
+# Print the AUROC
+auc(roc) # 0.7694
+
+plot(roc,print.thres="best",col="red")
+title(main = 'ROC Curve for QDA', line = 3)
+
+```
