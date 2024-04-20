@@ -1,0 +1,476 @@
+---
+title: "DS 6372"
+author: "Oluwadamilola Owolabi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Calling Libraries
+```{r}
+
+#library(jtools)
+library(sjPlot)
+#library(ResourceSelection)
+library(dplyr)
+library(ggplot2)
+```
+
+Getting the data
+```{r}
+
+# Getting the csv file
+#setwd("C:/Users/owola/Documents/MY_COURSES/SPRING_2024/DS_6372/Project/Project 2/bank+marketing/bank-additional/bank-additional")
+Bank <-read.csv("C:/Users/owola/Documents/MY_COURSES/SPRING_2024/DS_6372/Project/Project 2/bank+marketing/bank-additional/bank-additional/Bank-additional-full.csv", header= TRUE, sep = ';')
+head(Bank)
+names(Bank)
+```
+
+Splitting the dataset into training and test Data
+```{r}
+
+# Split into training and test
+set.seed(1234)
+perc_train <- .8 # Should we make this higher?
+train_indices <- sample(nrow(Bank), floor(perc_train * nrow(Bank)))
+BankData <- Bank[train_indices, ] #the training dataset
+BankTest <- Bank[-train_indices, ] #the validation dataset.
+yes_data <- BankTest[BankData$y == 'yes',] # 4250
+no_data <- BankData[BankTest$y == 'no',] # 31918
+
+View(BankData)
+```
+
+#### The classification goal is to predict if the client will subscribe (yes/no) a term deposit (variable y).
+
+Perform an exploratory analysis of the data set to identify potential trends between the Subscription status and the predictors.  At a minimum you should explore a scatter plot matrix for separability and for multicollinearity, and you should examine loess plots for the numeric  variables and bar plots for the  categorical variables. Write a brief report of what you see.  You do not need to consider interactions for this problem.
+
+Looking at the scatterplot Matrix
+```{r}
+library(GGally)
+#ggpairs(BankData, mapping = aes(color = y))
+```
+
+Performing an EDA of the categorical variables
+
+Looking at the y variable
+```{r}
+
+b<- BankData %>% 
+  group_by(y) %>%
+    summarise(cnt=n()) %>%
+    mutate(perc=round(cnt/sum(cnt),4))
+b
+
+ggplot(b,aes(x= y,y=perc,colour=y))+
+  geom_bar(aes(fill=y),show.legend=F,stat="identity")+
+  ylab("Proportion of customers subscribed")
+
+# Analysis: The chances of a customer subscribing to a term deposit is really low. 
+```
+
+
+Looking at the precentages of customers that applied for loans and those that didnt
+```{r}
+g<-BankData %>% 
+  group_by(loan,y) %>%
+  summarise(cnt=n()) %>%
+  mutate(perc=round(cnt/sum(cnt),4))%>%
+  arrange(desc(perc))
+g
+
+ggplot(g[c(1,3),],aes(x=reorder(loan,-perc),y=perc,colour=loan))+
+  geom_bar(aes(fill= loan),show.legend=T,stat="identity")+
+  ylab("Proportion of customers subscribed")+
+  xlab("Customer's loan Status")
+```
+
+##### Getting the EDA of the categorical Variables
+
+looking at the marital status
+```{r}
+
+g2<-BankData %>% 
+  group_by(marital,y) %>%
+  summarise(cnt=n()) %>%
+  mutate(perc=round(cnt/sum(cnt),4))%>%
+  arrange(desc(perc))
+g2
+
+ggplot(g2[c(1,3,5),],aes(x=reorder(marital,-perc),y=perc,colour=marital))+
+  geom_bar(aes(fill=marital),show.legend=T,stat="identity")+
+  ylab("Proportion of customers subscribed")+
+  xlab("Customer's Marital Status")
+
+# Analysis: 
+```
+
+Looking at the education level
+```{r}
+
+g3<-BankData %>% 
+  group_by(education,y) %>%
+  summarise(cnt=n()) %>%
+  mutate(perc=round(cnt/sum(cnt),4))%>%
+  arrange(desc(perc))
+g3
+
+ggplot(g3[c(1,3,5,7),],aes(x=reorder(education,-perc),y=perc,colour=education))+
+  geom_bar(aes(fill = education),show.legend=T,stat="identity")+
+  ylab("Proportion of customers subscribed")+
+  xlab("Customer's Education Level")
+
+# Analysis: The chances of getting a loan reduces as you rise in education level. Most likely due to the higher salary associated with jobs that requires such qualification
+```
+
+
+Looking at the Jobs of the customers
+```{r}
+
+g4<-BankData %>% 
+  group_by(job, y) %>%
+  summarise(cnt=n()) %>%
+  mutate(perc=round(cnt/sum(cnt),4))%>%
+  arrange(desc(perc))
+g4
+
+ggplot(g4[c(1,3,5,7,9,11,13,15, 17,19),],aes(x=reorder(job,-perc),y=perc,colour=job))+
+  geom_bar(aes(fill = job),show.legend=T,stat="identity")+
+  ylab("Proportion of customers subscribed") +
+  xlab("Jobs owned by customers")
+
+# Analysis: Students seems to have the highest chance of recieving personal loans. Mostl likely due to tuiton loans
+```
+
+
+Looking at the contact info of customers
+```{r}
+
+g4<-BankData %>% 
+  group_by(contact,y) %>%
+  summarise(cnt=n()) %>%
+  mutate(perc=round(cnt/sum(cnt),4))%>%
+  arrange(desc(perc))
+g4
+
+ggplot(g4[c(1,3, 5),],aes(x=reorder(contact,-perc),y=perc,colour = contact))+
+  geom_bar(aes(fill = contact),show.legend=T,stat="identity")+
+  ylab("Proportion of customers subscribed")+
+  xlab("Easiest way to contact a customer")
+
+```
+
+Customers with Housing Loans
+```{r}
+
+g5<-BankData %>% 
+  group_by(housing,y) %>%
+  summarise(cnt=n()) %>%
+  mutate(perc=round(cnt/sum(cnt),4))%>%
+  arrange(desc(perc))
+g5
+
+ggplot(g5[c(1,3),],aes(x=reorder(housing,-perc),y=perc,colour = housing))+
+  geom_bar(aes(fill = housing),show.legend=T,stat="identity")+
+  ylab("Proportion of customers subscribed")+
+  xlab("Customers that applied for a mortgage")
+
+#Analysis: There is a higher chance of customers that applied for mortgages
+```
+
+Outcome of the previous marketing campaign
+```{r}
+
+g6<-BankData %>% 
+  group_by(poutcome,y) %>%
+  summarise(cnt=n()) %>%
+  mutate(perc=round(cnt/sum(cnt),4))%>%
+  arrange(desc(perc))
+g6
+
+ggplot(g6[c(1,3,5, 7),],aes(x=reorder(poutcome,-perc),y=perc,colour = poutcome))+
+  geom_bar(aes(fill = poutcome),show.legend=T,stat="identity")+
+  ylab("Proportion of customers subscribed")+
+  xlab("Outcome of the previous marketing campaign")
+```
+
+
+Last contact month of the year
+```{r}
+
+g7<-BankData %>% 
+  group_by(month,y) %>%
+  summarise(cnt=n()) %>%
+  mutate(perc=round(cnt/sum(cnt),4))%>%
+  arrange(desc(perc))
+g7
+
+ggplot(g7[c(1,3,5,7,9,11,13,15,17,19,21,23),],aes(x=reorder(month,-perc),y=perc,colour = month))+
+  geom_bar(aes(fill = month),show.legend=T,stat="identity")+
+  ylab("Proportion of customers subscribed")+
+  xlab("Last contact month of the year")
+```
+
+
+Checking for customers that has credits in default
+```{r}
+
+g8<-BankData %>% 
+  group_by(default,y) %>%
+  summarise(cnt=n()) %>%
+  mutate(perc=round(cnt/sum(cnt),4))%>%
+  arrange(desc(perc))
+g8
+
+ggplot(g8[c(1,3),],aes(x=reorder(default,-perc),y=perc,colour = default))+ geom_bar(aes(fill = default),show.legend=T,stat="identity")+
+  ylab("Proportion of customers subscribed")+
+  xlab("customers that has credits in default")
+```
+
+EDA of the numerical variables (using a Loess plot)
+
+Turning the y variable to a numerical variable 
+```{r}
+
+BankData$y.num<-ifelse(BankData$y=="yes",1,0)
+View(BankData)
+```
+
+Day of the week
+```{r}
+
+ggplot(BankData,aes(x= day ,y=y.num))+geom_point()+
+  geom_smooth(method="loess",size=1)+
+  ylim(-.2,1.2)
+```
+
+Age
+```{r}
+
+ggplot(BankData,aes(x= age ,y=y.num))+geom_point()+
+
+  geom_smooth(method="loess",size=1,span=1.5)+
+  ylim(-.2,1.2)
+```
+
+balance
+```{r}
+
+ggplot(BankData,aes(x= balance ,y=y.num))+geom_point()+
+  geom_smooth(method="loess",size=1,span=1.5)+
+  ylim(-.2,1.2)
+```
+
+Duration the last contact was contacted
+```{r}
+
+ggplot(BankData,aes(x= duration ,y=y.num))+geom_point()+
+  geom_smooth(method="loess",size=2,span=1.5)+
+  ylim(-.2,1.2)
+```
+
+campaign
+```{r}
+
+ggplot(BankData,aes(x= campaign ,y=y.num))+geom_point()+
+  geom_smooth(method="loess",size=1,span=1.5)+
+  ylim(-.2,1.2)
+```
+
+
+pdays
+```{r}
+
+ggplot(BankData,aes(x= pdays ,y=y.num))+geom_point()+
+  geom_smooth(method="loess",size=1,span=1.5)+
+  ylim(-.2,1.2)
+```
+
+previous
+```{r}
+
+ggplot(BankData,aes(x= previous ,y=y.num))+geom_point()+
+  geom_smooth(method="loess",size=1, span=1.5) +
+  ylim(-.2,1.2)
+```
+
+
+#### Looking at logstic regression P-values on just the numerical variables
+ 
+```{r}
+
+log.model.numerical <-glm(y.num ~ age + duration + campaign + pdays + previous + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed ,data = BankData,family="binomial")
+coef(summary(log.model.numerical))
+```
+variables with p-values < 0.05, it means the variable is statistically significant
+Variables with statistical significance :- pdays, previous, emp.var.rate, cons.price.idx, cons.conf.idx, nr.employed.
+
+Creating a bar graph to show the intensity of each p-value
+
+```{r}
+
+data <- c(9.845997e-110, 7.352136e-12, 3.264951e-21, 4.943288e-10, 2.273849e-07, 1.082911e-06)  # Numeric data for bar heights
+log_data <- log(data) * -1
+labels <- c('pdays', 'previous', 'emp.var.rate', 'cons.price.idx', 'cons.conf.idx', 'nr.employed')  # Labels for the categories
+
+# Create a bar plot
+barplot(log_data, names.arg = labels, 
+        xlab = "Categories", ylab = "Frequency/Counts",
+        main = "Bar Plot Example",
+        col = "skyblue",  # Bar color
+        border = "black",  # Border color
+        ylim = c(0, max(log_data) * 1))  # Adjust y-axis limits for better visualization
+```
+
+
+#### Logistic regressions for categorical variables
+
+```{r}
+
+log.model.categorical <-glm(y.num ~ job + marital + education + default + housing + loan + contact + month + day_of_week + poutcome ,data = BankData,family="binomial")
+coef(summary(log.model.categorical))
+```
+## variables with p-values < 0.05, it means the variable is statistically significant
+## Variables with statistical significance :- jobblue-collar, jobhousemaid, jobretired, jobservices, jobstudent, jobtechnician, maritalsingle, jobunemployed, maritalsingle, educationunknown, defaultunknown, contacttelephone, monthaug, monthdec, monthjul, monthmar, monthmay, monthnov, monthoct, monthsep, day_of_weekmon, day_of_weekwed, poutcomesuccess 
+
+Creating a bar graph to show the intensity of each p-value
+
+```{r}
+
+data <- c(1.551613e-33, 5.995821e-01, 1.592811e-14, 4.456974e-03, 1.195754e-10, 3.376630e-02, 5.436889e-03, 4.942619e-02, 4.420344e-22, 7.001195e-78, 1.497726e-34, 1.092251e-06, 5.133784e-30, 4.295017e-27, 3.491645e-34, 1.036440e-31, 5.489694e-15, 1.572625e-03,  1.163557e-07, 2.343290e-02, 3.047043e-185)  # Numeric data for bar heights
+log_data <- log(data) * -1
+labels <- c('jobblue-collar', 'jobhousemaid', 'jobretired', 'jobservices', 'jobstudent', 'jobtechnician', 'maritalsingle', 'jobunemployed', 'maritalsingle', 'educationunknown', 'defaultunknown', 'contacttelephone', 'monthaug', 'monthdec', 'monthjul', 'monthmar', 'monthmay', 'monthnov', 'monthoct', 'monthsep', 'day_of_weekmon', 'day_of_weekwed', 'poutcomesuccess')  # Labels for the categories
+
+# Create a bar plot
+barplot(log_data, names.arg = labels, 
+        xlab = "Categories", ylab = "Frequency/Counts",
+        main = "Bar Plot Example",
+        col = "skyblue",  # Bar color
+        border = "black",  # Border color
+        ylim = c(0, max(log_data) * 1))  # Adjust y-axis limits for better visualization
+```
+
+```{r}
+
+log.model <-glm(y.num ~ job + marital + education + default + housing + loan + contact + month + day_of_week + poutcome + age + duration + campaign + pdays + previous + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed ,data = BankData,family="binomial")
+coef(summary(log.model))
+```
+
+```{r}
+# Extract variable names
+variable_names <- rownames(summary(log.model)$coefficients)
+
+# getting the  p-values from the model3
+p_values <- summary(log.model)$coefficients[, 4]  # Assuming p-values are in the 5th column of the summary table
+p_values <- data.frame(p_values)$p_values
+
+df <- data.frame(variable_names, p_values) #combining the pvalues and variable names into a dataframe
+
+df <- df[!df$p_value == 0 , ] #removing varaiables with pvalue = 0
+df$p_values <- log(df$p_values)  * -1
+
+barplot(df$p_values, 
+        main = "P-values of Regression Coefficients less than the significance level 0.05", 
+        xlab = "Variables", 
+        ylab = "P-value",
+        names.arg = df$variable_names,
+        las = 2,  # Rotate x-axis labels vertically for better readability
+        col = "steelblue",  # Set color of bars
+        ylim = c(exp(0.05) * -1, max(df$p_values) * 1.2)  # Set ylim from the significance level to the minimum pvalue
+        
+)
+
+library(ggplot2)
+ggplot(df,aes(variable_names,p_values, fill = ifelse(p_values > (exp(0.05) * -1), "Positive", "Negative"))) +
+  geom_bar(stat="identity", fill = "skyblue") + 
+  #geom_text(aes(label = variable_names), vjust = -0.5) +  # Add text labels on top of bars
+  scale_fill_manual(values = c("Positive" = "skyblue", "Negative" = "salmon")) +
+  labs(x = "Variables", y = "P-values", title = "P-values of Regression Coefficients less than the significance level 0.05") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))  # Rotate x-axis labels for better readability
+
+```
+
+## Using forward/backward model selection
+
+Converting the categorical data into integers
+```{r}
+# Usng one hot encoding since, its more preferred for forward selection.
+
+BankData_fwd <- BankData #Copying BankData into another variable
+
+# Specify the categorical variable(s) for encoding (replace 'color' with your variable name)
+categorical_var <- "job"
+
+# Create the one-hot encoded data using model.matrix
+encoded_data <- model.matrix(~ . - 1, data[categorical_var])
+
+# Combine the original data with the encoded data (optional)
+data <- cbind(data[,-categorical_var], encoded_data)
+```
+
+
+Forward selection
+```{r}
+library(leaps)
+
+model.fwd = regsubsets(y.num ~ job + marital + education + default + housing + loan + contact + month + day_of_week + poutcome + age + duration + campaign + pdays + previous + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed ,data = BankData, nvmax=20, method="forward")
+
+summary(model.fwd)$adjr2
+#summary(model.fwd)$rss
+#summary(model.fwd)$bic
+
+bics<-summary(model.fwd)$bic
+plot(1:21,bics,type="l",ylab="BIC",xlab="# of predictors") #got 21 from the forward selection prediction
+index<-which(bics==min(bics))
+points(index,bics[index],col="red",pch=10)
+
+adjr2<-summary(model.fwd)$adjr2
+plot(1:21,adjr2,type="l",ylab="Adjusted R-squared",xlab="# of predictors")
+index<-which(adjr2==max(adjr2))
+points(index,adjr2[index],col="red",pch=10)
+
+rss<-summary(model.fwd)$rss
+plot(1:21,rss,type="l",ylab="train RSS",xlab="# of predictors")
+index<-which(rss==min(rss))
+points(index,rss[index],col="red",pch=10)
+
+coef(model.fwd,21) #looking at coefficints
+
+#analysis: out of the 6 coefficients gotten by the forward selction, the BIC chose 4
+```
+
+backward selection
+```{r}
+#log.model <-glm(y.num ~ job + marital + education + default + housing + loan + contact + month + day_of_week + poutcome + age + duration + campaign + pdays + previous + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed ,data = BankData,family="binomial") 
+
+model.bwd=regsubsets(y.num ~ job + marital + education + default + housing + loan + contact + month + day_of_week + poutcome + age + duration + campaign + pdays + previous + emp.var.rate + cons.price.idx + cons.conf.idx + euribor3m + nr.employed ,data = BankData, nvmax=20, method="backward", really.big=TRUE)
+
+summary(model.bwd)$adjr2
+summary(model.bwd)$rss
+summary(model.bwd)$bic
+
+#par(mar=c(.01,.01,.01,.01))
+#par(mfrow=c(1,21))
+bics<-summary(model.bwd)$bic
+plot(1:21,bics,type="l",ylab="BIC",xlab="# of predictors") #got 7 from the forward selection prediction
+index<-which(bics==min(bics))
+points(index,bics[index],col="red",pch=30)
+
+adjr2<-summary(model.bwd)$adjr2
+plot(1:21,adjr2,type="l",ylab="Adjusted R-squared",xlab="# of predictors")
+index<-which(adjr2==max(adjr2))
+points(index,adjr2[index],col="red",pch=30)
+
+rss<-summary(model.bwd)$rss
+plot(1:21,rss,type="l",ylab="train RSS",xlab="# of predictors")
+index<-which(rss==min(rss))
+points(index,rss[index],col="red",pch=30)
+
+coef(model.fwd,21) #looking at coefficints
+
+#analysis: out of the 6 coefficients gotten by the forward selction, the BIC chose 4
+```
+
