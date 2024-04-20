@@ -1,0 +1,754 @@
+---
+title: "Final Project - Bank Dataset"
+author: "Aaron Abromowitz, Stephanie Duarte, Dammy Owolabi"
+date: "2024-04-20"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+```
+Youtube Link: https://youtu.be/oeHvLTXBvNQ?si=Wxctb9p1mOr-wJOV
+
+# EDA
+The first thing that is done when you get a dataset is to peform an Exploratory Data Anslysis, to see what characteristics the data has.  The variable we are trying to predict is the y column whic represents if the client has subscribed to a term deposit.  The possible values are "yes" or "no".
+
+## Create training and test set
+Going forward, we will use the training set for all analysis and model building.  The test set will be used at the end to get metrics for the various models we create.
+```{r}
+# Pull in data
+data<-read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/bank-additional-full.csv',stringsAsFactors = T, sep=";")
+
+# Set levels to use for later
+data$y <- relevel(data$y, ref="yes")
+data$month <- factor(data$month, levels=c('mar','apr','may','jun','jul','aug','sep','oct','nov','dec'))
+data$day_of_week <- factor(data$day_of_week, levels=c('mon','tue','wed','thu','fri'))
+
+# Duration was removed since the dataset explanation file said that it was created after y variable was known, so shouldn't be used for prediction.
+data$duration <- c()
+
+# Create the train and test split
+train_perc <- .8
+set.seed(1234)
+train_indices <- sample(nrow(data), floor(train_perc * nrow(data)))
+train_data <- data[train_indices, ]
+nrow(train_data)
+test_data <- data[-train_indices, ] 
+nrow(test_data)
+```
+
+## Look at summary statistics for numeric variables
+There are several numeric variables where we can look at the min/max, quartiles, median, and mean.
+```{r}
+summary(train_data$age)
+summary(train_data$campaign)
+summary(train_data$pdays)
+summary(train_data$previous)
+summary(train_data$emp.var.rate)
+summary(train_data$cons.price.idx)
+summary(train_data$cons.conf.idx)
+summary(train_data$euribor3m)
+summary(train_data$nr.employed)
+```
+
+## Look at summary statistics for categorical variables
+There are several categorical variables.  Summary statistics don't make as much sense for them, but you can look at the distribution of values in the different categories.
+```{r}
+summary(train_data$job)
+summary(summary(train_data$job))
+length(summary(train_data$job))
+
+summary(train_data$marital)
+summary(summary(train_data$marital))
+length(summary(train_data$marital))
+
+summary(train_data$education)
+summary(summary(train_data$education))
+length(summary(train_data$education))
+
+summary(train_data$default)
+summary(summary(train_data$default))
+length(summary(train_data$default))
+
+summary(train_data$housing)
+summary(summary(train_data$housing))
+length(summary(train_data$housing))
+
+summary(train_data$loan)
+summary(summary(train_data$loan))
+length(summary(train_data$loan))
+
+summary(train_data$contact)
+summary(summary(train_data$contact))
+length(summary(train_data$contact))
+
+summary(train_data$month)
+summary(summary(train_data$month))
+length(summary(train_data$month))
+
+summary(train_data$day_of_week)
+summary(summary(train_data$day_of_week))
+length(summary(train_data$day_of_week))
+
+summary(train_data$poutcome)
+summary(summary(train_data$poutcome))
+length(summary(train_data$poutcome))
+```
+
+## Examine bank client data
+The dataset includes age, job, marital, education, default, housing, and loan columns, which were identified as client data.
+
+```{r}
+library(tidyverse)
+
+# Plot age
+summary <- train_data %>%
+  group_by(age,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=age,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Age') + ggtitle('Age Distribution Based on Y Value')
+
+# Plot job
+summary <- train_data %>%
+  group_by(job,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=job,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Job') + ggtitle('Job Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot marital
+summary <- train_data %>%
+  group_by(marital,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=marital,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Marital') + ggtitle('Marital Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot default
+summary <- train_data %>%
+  group_by(default,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=default,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Default') + ggtitle('Default Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot housing
+summary <- train_data %>%
+  group_by(housing,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=housing,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Housing') + ggtitle('Housing Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+<br/>
+None of these variables appear to show any strong indicator for yes or no.  It looks like higher ages tend to lean more towards yes, and certain jobs (Ex: admin) lean more towards yes.  When Y = no, there are more than about double the unknown values, but still far under 50%.
+
+## Examine data related with the last contact of the current campaign
+The dataset includes contact communication type, month of contact, and day of week of contac, for the last contact of the current campaign to sell term deposits.
+```{r}
+# Plot contact
+summary <- train_data %>%
+  group_by(contact,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=contact,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Contact') + ggtitle('Contact Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot month
+summary <- train_data %>%
+  group_by(month,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=month,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Month') + ggtitle('Month Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Plot day of week
+summary <- train_data %>%
+  group_by(day_of_week,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=day_of_week,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Day of Week') + ggtitle('Day of Week Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+<br/>
+If y is Yes, there are ~20% more likely to be contacted on your cell phone than on landline.  There are certain months that also seem to have more term deposit sales in them.  Day of week looks to not have much change.
+
+## Examine other data related with the current campaign or previous campaigns
+There are variables for number of contacts performed during this campaign and for this client (campaign), number of days that passed by after the client was last contacted from a previous campaign (pdays), number of contacts performed before this campaign and for this client (previous), and outcome of the previous marketing campaign (poutcome).
+```{r}
+# Plot campaign
+summary <- train_data %>%
+  group_by(campaign,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=campaign,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Campaign') + ggtitle('Campaign Distribution Based on Y Value') + xlim(c(0,20))
+
+# Plot poutcome
+summary <- train_data %>%
+  group_by(poutcome,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=poutcome,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Poutcome') + ggtitle('Poutcome Percentages Based on Y Value') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+<br/>
+Campaign distributions seem pretty similar between Yes and No.  For Poutcome, success is more common for the yes than for no.
+
+## Examine socio-economic data
+There are variables for socio economic data for Employement Variation Rate, Consumer Price Index, Consumer Confidence Index, Euribor 3 month rate, and Numer of Employees.
+```{r}
+# Plot emp.var.rate
+summary <- train_data %>%
+  group_by(emp.var.rate,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=emp.var.rate,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Employment Variation Rate') + ggtitle('Employment Variation Rate Distribution Based on Y Value')
+
+# Plot cons.price.idx
+summary <- train_data %>%
+  group_by(cons.price.idx,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=cons.price.idx,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Consumer Price Index') + ggtitle('Consumer Price Index Distribution Based on Y Value')
+
+# Plot euribor3m
+summary <- train_data %>%
+  group_by(euribor3m,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=euribor3m,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Euribor3m') + ggtitle('Euribor3m Metric Distribution Based on Y Value')
+
+# Plot nr.employed
+summary <- train_data %>%
+  group_by(nr.employed,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data[train_data$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data[train_data$y == 'yes',]) * 100
+summary %>% ggplot(aes(x=nr.employed,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Percentage') + xlab('Number of Employees') + ggtitle('Number of Employees Distribution Based on Y Value')
+
+### Analyzing campaign
+
+ggplot(train_data) +   
+  geom_histogram(mapping = aes(x=campaign, fill=y)) +  
+  ggtitle("Distribution of 'y' by campaign")
+
+### Analyzing JOB
+
+ggplot(train_data) +   
+  geom_bar(mapping = aes(x=job, fill = y)) +   
+  coord_flip() +     #Added coord flip here to make it more readable
+  ggtitle("Number of 'y' by job") +  
+  ylab("Count") +   
+  xlab("Job")
+```
+<br/>
+Admin, technician and blue collar jobs are the top 3 subscribers by volume 
+
+```{r}
+df2 <- train_data %>%  
+  group_by(job) %>%  
+  count(y) %>%  
+  mutate(job_conv = n/sum(n)) %>%  
+  filter(y == "yes")
+
+ggplot(df2, aes(x=job, y=job_conv)) +  
+  geom_point() +  
+  coord_flip() 
+```
+
+Above, I looked at the ratio of "yes" vs "no" and see that students and retired persons convert at much higher rates than those of other professions. And 'blue collar' has the lowest conversion rate
+
+So, if they were to want to improve the cost effectiveness of their campaigns they might want to target more 'students' and 'retirees'
+
+
+### Analyzing By Month
+```{r}
+ggplot(train_data) + 
+  geom_bar(mapping = aes(x=month, fill = y)) + 
+  ggtitle("Number of 'y' by month") +
+  ylab("Cnt") + xlab("month")
+
+#Education
+ggplot(train_data, aes(x = education, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Distribution of 'y' by Education") +  
+  ylab("Proportion") + 
+  xlab("Education Level")
+
+ggplot(train_data, aes(x = education, fill = y)) + 
+  geom_bar() + 
+  facet_wrap(~ y, scales = "free_y") + 
+  ggtitle("Distribution of 'y' by Education") +  
+  ylab("Count") + 
+  xlab("Education Level")
+
+  
+#Age
+ggplot(train_data) + 
+  geom_bar(mapping = aes(x=age, fill = y)) + 
+  ggtitle("Distribution of 'y' by Age Group") +  
+  ylab("Cnt") + 
+  xlab("Age Group")
+
+# by nr.employed
+ggplot(train_data) + geom_histogram(mapping = aes(x = nr.employed, fill = y)) +
+  ggtitle("Distribution of 'y' by nr.employed")
+
+# Euribor 3 month rate
+ggplot(train_data, aes(x = month , y = euribor3m, fill = y)) +  
+  geom_boxplot() +   
+  ggtitle("euribor3m by month")
+
+ggplot(train_data) + geom_histogram(mapping = aes(x = euribor3m, fill = y)) +
+  ggtitle("Distribution of euribor3m by month")
+
+# Correlations of socio-economic variables
+library(GGally)
+ggpairs(train_data[,c('emp.var.rate','cons.price.idx','nr.employed','euribor3m')],aes(color = train_data$y))
+```
+<br/>
+The Consumer Price Index data seems to have more of a flat distribution for those with a term deposit.  Employment Variation Rate, Euribor3m, and Number Employed all seem to have similar distributions where there is a higher percentage without term deposits for higher values of the index. <br/>
+<br/>
+
+Looking at the paired correlations between out of the socio economic variables, we can see that Employment Variation Rate, Euribor3m, and Number Employed are highly correlated.
+
+### LOESS Curves
+LOESS curves can be useful to plot for numeric variables.  They show if there is a general trend to higher or lower probabilities if the numeric variable increases.  If they increase and then decrease, or vice-versa, this shows that the relationship between the two variables isn't quite as simple.
+
+```{r}
+# LOESS for Age
+train_data$num <- ifelse(train_data$y=="yes",1,0)
+train_data %>% ggplot(aes(x=age,y=num)) + 
+  geom_point() + geom_smooth(method="loess") + 
+  ggtitle('LOESS Curve for Age')
+
+# LOESS for Campaign
+train_data$num <- ifelse(train_data$y=="yes",1,0)
+train_data %>% ggplot(aes(x=campaign,y=num)) + 
+  geom_point() + geom_smooth(method="loess", size = 1, span = 2, se = FALSE) + 
+  ggtitle('LOESS Curve for Campaign') + ylim(c(-.1,1.1))
+
+# LOESS for nr.employed 
+train_data %>% ggplot(aes(x=nr.employed,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for nr.employed')  + 
+  ylim(c(-.1,1.1))
+
+# LOESS for emp.var.rate 
+train_data %>% ggplot(aes(x=emp.var.rate,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for emp.var.rate')
+
+# LOESS for cons.price.idx 
+train_data %>% ggplot(aes(x=cons.price.idx,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for cons.price.idx')
+```
+<br/>
+The LOESS plots for Age and Campaign show that No becomes more likely as Age and Campaign increase, and then less likely.  However, the LOESS plots for nr.employed, emp.var.rate, and cons.price.idx show a general downward trend toward a higher likelihood of No as those values increase.
+
+```{r}
+# LOESS for nr.employed by Month
+train_data %>% ggplot(aes(x=nr.employed,y=num,color = month)) + 
+  geom_point() + geom_smooth(method="loess", size = 1, span=1.1) +  
+  ggtitle('LOESS Curve for nr.employed by Month') + 
+  ylim(c(-.1,1.1))
+
+# LOESS for nr.employed by poutcome
+train_data %>% ggplot(aes(x=nr.employed,y=num,color = poutcome)) + 
+  geom_point() + geom_smooth(method="loess", size = 1, span = 1) +  
+  ggtitle('LOESS Curve for nr.employed by poutcome') + 
+  ylim(c(-.1,1.1))
+
+# LOESS for campaign by poutcome
+train_data %>% ggplot(aes(x=campaign,y=num,color = poutcome)) + 
+  geom_point() + geom_smooth(method="loess", size = 1, span = 1.1) +  
+  ggtitle('LOESS Curve for campaign by poutcome') + 
+  ylim(c(-.1,1.1))
+```
+<br/>
+The LOESS curves for these variable combinations show that using these variables in the same model or even as an interaction between these two variables could be useful.
+
+```{r}
+# LOESS for nr.employed squared
+train_data %>% ggplot(aes(x=(nr.employed)^2,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for nr.employed Squared')  + 
+  ylim(c(-.1,1.1))
+
+# LOESS for nr.employed cubed
+train_data %>% ggplot(aes(x=(nr.employed)^3,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for nr.employed Cubed') + 
+  ylim(c(-.1,1.1))
+
+# LOESS for nr.employed tenth power
+train_data %>% ggplot(aes(x=(nr.employed)^10,y=num)) + 
+  geom_point() + geom_smooth(method="loess",span=.5) + 
+  ggtitle('LOESS Curve for nr.employed to the Tenth Power') + 
+  ylim(c(-.1,1.1))
+```
+<br/>
+The LOESS curves for powers of nr.employed (particularly comparing the tenth power to the first or second power) seem to improve as the power increases.  This points to adding polynomial complexity terms to the model could be useful.
+
+### Percentage Plots
+It can be helpful to look at plots that sum up to 100% for Yes and No results for categorical variables.  This can show that certain values have a higher or lower percentage of Yes results.
+```{r}
+# Percentage plot for education
+ggplot(train_data, aes(x = education, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Distribution of 'y' by Education") +  
+  ylab("Proportion") + 
+  xlab("Education Level")
+
+# Percentage plot for month
+ggplot(train_data, aes(x = month, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Distribution of 'y' by Month") +  
+  ylab("Proportion") + 
+  xlab("Month")
+
+# Percentage plot for poutcome
+ggplot(train_data, aes(x = poutcome, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Distribution of 'y' by Previous Outcome") +  
+  ylab("Proportion") + 
+  xlab("poutcome")
+
+# Percentage plot for contact
+ggplot(train_data, aes(x = contact, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Distribution of 'y' by Contact Type") +  
+  ylab("Proportion") + 
+  xlab("contact")
+```
+<br/>
+Education shows very similar Yes/No percentages across the different Education Types, which indicates that it won't be a useful variable for model building.  Month and poutcome have 1 or more values with very high values of yes, which could be useful for model building.  Contact seems to have one category with roughly double the number of yes, so it might be slightlty useful in model building.
+
+## Clustering
+We wanted to see if a clustering analysis of the data would be useful.  We only looked at the numeric variables.  The purpose of a clustering analysis is to see if splitting the data into clusters allows for additional insight, particularly into classification. <br/>
+<br/>
+
+First, we will try to determine the number of clusters to use.  The metric we used for comparing cluster sizes is the Silhoutte Statistic.  Below is the code I ran, but it has trouble knitting.  The heat maps are in the PPT though.
+```{r, eval=FALSE}
+library(RColorBrewer)
+library(pheatmap)
+library(cluster)
+df.numeric <- train_data[ , sapply(train_data, is.numeric)]
+center.scale=scale(df.numeric)
+mydist<-dist(center.scale)
+sim.clust<-hclust(mydist,method="complete")
+max_clusters <- 20
+my.sil<-c()
+for (i in 2:max_clusters){
+  print(i)
+  sil.result<-silhouette(cutree(sim.clust,i),mydist)
+  my.sil[i-1]<-summary(sil.result)$avg.width
+}
+```
+
+```{r}
+max_clusters <- 20
+my.sil <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/my_sil.csv')
+my.sil <- my.sil$x
+ggplot(data = data.frame(x=2:max_clusters, y=my.sil),aes(x=x,y=y)) + geom_line() + 
+  ylab('Silhouette') + xlab('Cluster Size') + ggtitle('Determining Number of Clusters to Use') + 
+  geom_point(data = data.frame(x = 2, y = my.sil[1]), aes(x = x, y = y), size = 1, color = "red", fill = "red", shape = 21)
+```
+<br/>
+It looks like 2 clusters is the highest, so we will try that.
+
+```{r, eval=FALSE}
+num_clusters <- 2
+rownames(df.numeric)<-paste("R",1:nrow(df.numeric),sep="")
+annotation_row<-data.frame(Response=factor(train_data$y),Cluster=factor(cutree(sim.clust,num_clusters)))
+rownames(annotation_row)<-rownames(df.numeric)
+pheatmap(df.numeric,annotation_row=annotation_row,cluster_cols=F,scale="column",fontsize_row=3,legend=T
+         ,color=colorRampPalette(c("blue","white", "red"), space = "rgb")(100))
+```
+![Heatmap with 2 Clusters](https://raw.githubusercontent.com/stedua22/6372-Project-2/main/Heatmap%202%20Clusters.png)
+<br/>
+One of the clusters is huge and the other is tiny.  Let's try with 11 clusters.
+
+```{r, eval=FALSE}
+num_clusters <- 11
+rownames(df.numeric)<-paste("R",1:nrow(df.numeric),sep="")
+annotation_row<-data.frame(Response=factor(train_data$y),Cluster=factor(cutree(sim.clust,num_clusters)))
+rownames(annotation_row)<-rownames(df.numeric)
+pheatmap(df.numeric,annotation_row=annotation_row,cluster_cols=F,scale="column",fontsize_row=3,legend=T
+         ,color=colorRampPalette(c("blue","white", "red"), space = "rgb")(100))
+```
+![Heatmap with 11 Clusters](https://raw.githubusercontent.com/stedua22/6372-Project-2/main/Heatmap%2011%20Clusters.png)
+<br/>
+This is a little bit more interesting.  Some clusters had a lot of 'yes' results.  Others seem to be the same distribution as before.
+
+```{r}
+cluster2 <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/cluster2.csv')
+cluster11 <- read.csv('https://raw.githubusercontent.com/stedua22/6372-Project-2/main/cluster11.csv')
+train_data$cluster2 <- cluster2$x
+train_data$cluster11 <- cluster11$x
+
+ggplot(train_data, aes(x = cluster2, fill = y)) + 
+    geom_bar(position = "fill") + 
+    ggtitle("Cluster 2 Distribution") +  
+    ylab("Proportion") + 
+    xlab("Cluster 2")
+
+ggplot(train_data, aes(x = cluster11, fill = y)) + 
+  geom_bar(position = "fill") + 
+  ggtitle("Cluster 11 Distribution") +  
+  ylab("Proportion") + 
+  xlab("Cluster 11")
+```
+The 11 cluster example does seem like it does a reasonable job of picking out clusters with 
+
+## Variables over time
+We want to see if there was any variation in term deposits over time.  The file explaining the dataset mentioned that the data was in order of date.
+```{r}
+# Sorting data by row number
+train_data_sorted <- train_data
+train_data_sorted$num <- as.numeric(rownames(train_data_sorted))
+train_data_sorted$group <- ceiling(train_data_sorted$num / 1000)
+summary <- train_data_sorted %>%
+  group_by(group,y) %>%
+  summarize(count=n())
+summary$perc <- 0
+summary$perc[summary$y == 'no'] <- summary$count[summary$y == 'no'] / nrow(train_data_sorted[train_data_sorted$y == 'no',]) * 100
+summary$perc[summary$y == 'yes'] <- summary$count[summary$y == 'yes'] / nrow(train_data_sorted[train_data_sorted$y == 'yes',]) * 100
+
+# Term deposit over time
+summary %>% ggplot(aes(x=group,y=perc,fill=y)) + geom_bar(stat="identity") + facet_wrap(~y) + 
+  ylab('Term Deposits') + xlab('Time') + ggtitle('Term Deposits over Time')
+
+# Month over time
+train_data_sorted %>% ggplot(aes(x=num, y=month, color=y)) + geom_jitter() + 
+  xlab('Time') + ylab('Month') + ggtitle('Last Contact Month over Time')
+
+# Employment Variation Rate over time
+train_data_sorted %>% ggplot(aes(x=num, y=emp.var.rate, color=y)) + geom_jitter() + 
+  xlab('Time') + ylab('Month') + ggtitle('Employment Variation Rate over Time')
+```
+
+
+#### LOOKING AT THE PVALUE DISTRIBUTIONS
+Looking at how each variable in the model, significantly impacts our response variable
+```{r}
+log.model <-glm(y ~ . ,data = train_data,family="binomial")
+
+# Extract variable names
+variable_names <- rownames(summary(log.model)$coefficients)
+
+# Setting the levels back
+data$y <- relevel(data$y, ref="yes")
+
+# getting the  p-values from the model3
+p_values <- summary(log.model)$coefficients[, 4]  # Assuming p-values are in the 4th column of the summary table
+p_values <- data.frame(p_values)$p_values
+
+df <- data.frame(variable_names, p_values) #combining the pvalues and variable names into a dataframe
+
+df <- df[!df$p_value == 0 , ] #removing varaiables with pvalue = 0
+df$p_values <- log(df$p_values)  * -1
+
+barplot(df$p_values, 
+        main = "P-values of Regression Coefficients less than the significance level 0.05", 
+        xlab = "Variables", 
+        ylab = "P-value",
+        names.arg = df$variable_names,
+        las = 2,  # Rotate x-axis labels vertically for better readability
+        col = "steelblue",  # Set color of bars
+        ylim = c(exp(0.05) * -1, max(df$p_values) * 1.2)  # Set ylim from the significance level to the max p-values
+        
+)
+
+library(ggplot2)
+ggplot(df,aes(variable_names,p_values, fill = ifelse(p_values > (exp(0.05) * -1), "Positive", "Negative"))) + #filtering just the highly significant p-values
+  geom_bar(stat="identity", fill = "skyblue") + 
+  #geom_text(aes(label = variable_names), vjust = -0.5) +  # Add text labels on top of bars
+  scale_fill_manual(values = c("Positive" = "skyblue", "Negative" = "salmon")) +
+  labs(x = "Variables", y = "P-values", title = "P-values of Regression Coefficients less than the significance level 0.05") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))  # Rotate x-axis labels for better readability
+```
+From the plot above, we can see that the top 5 highly significant values with respoct to the response variable y are months(most of them), poutcome, emp.var.rate, contact, cons.price.idx, which are similar to our selected simple logistic model
+
+
+# PCA models
+
+```{r}
+
+#make sure "success" level is defined as "yes"
+str(train_data$y)
+train_data$num <- c()
+
+
+#PCA
+df.numericPC <- train_data[ , sapply(train_data, is.numeric)]
+pc.result<-prcomp(df.numericPC,scale.=TRUE)
+pc.scores<-pc.result$x
+pc.scores<-data.frame(pc.scores)
+pc.scores$y<-train_data$y
+
+
+
+#Eignenvector Matrix
+View(pc.result$rotation)
+
+#Scree plot
+eigenvals<-(pc.result$sdev)^2
+eigenvals
+
+par(mfrow=c(1,2))
+plot(eigenvals,type="l",main="Scree Plot",ylab="Eigen Values",xlab="PC #")
+plot(eigenvals/sum(eigenvals),type="l",main="Scree Plot",ylab="Prop. Var. Explained",xlab="PC #",ylim=c(0,1))
+cumulative.prop<-cumsum(eigenvals/sum(eigenvals))
+lines(cumulative.prop,lty=2)
+legend("topleft", legend=c("Prop","Cumulative"),
+       lty=1:2, cex=0.8)
+
+
+data.frame(PC=1:length(eigenvals),Prop=eigenvals/sum(eigenvals),Cumulative=cumulative.prop)
+
+
+# Calculate the variance explained by each principal component
+var_explained <- pc.result$sdev^2 / sum(pc.result$sdev^2)
+cum_var_explained <- cumsum(var_explained)
+
+# Find the number of components that explain at least 90% of the variance
+num_comp_90 <- which(cum_var_explained >= 0.9)[1]
+
+# Print the number of components
+print(num_comp_90) #We would need 5 to retain approximately 90%
+
+
+#Plotting PCA variables with the two colors:
+
+
+pc.result<-prcomp(df.numericPC,scale.=TRUE)
+PC <- data.frame(diagnosis = train_data$y)
+PC$PC1 <- pc.result$x[,1]
+PC$PC2 <- pc.result$x[,2]
+PC$PC3 <- pc.result$x[,3]
+PC$PC4 <- pc.result$x[,4]
+PC$PC5 <- pc.result$x[,5]
+ggpairs(PC[,-1],aes(color=PC[,1]))
+
+
+
+
+#Use ggplot2 to plot the first few pc's
+ggplot(data = pc.scores, aes(x = PC1, y = PC2)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+ggplot(data = pc.scores, aes(x = PC2, y = PC3)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+ggplot(data = pc.scores, aes(x = PC3, y = PC4)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+ggplot(data = pc.scores, aes(x = PC4, y = PC5)) +
+  geom_point(aes(col=y), size=1)+
+  ggtitle("PCA of Numeric Data pre-EDA")
+
+
+# PCA without campaign, euribor3m,and nr.employed as they are more like factors and not continuous
+
+
+#Performing PCA on predictors
+
+df.numeric2 <- df.numericPC[,-c(2,8,9)]
+pc.result2<-prcomp(df.numeric2,scale.=TRUE)
+pc.scores2<-pc.result2$x
+pc.scores2<-data.frame(pc.scores2)
+pc.scores2$y<-train_data$y
+#pc.scores2
+
+
+#Eignenvector Matrix
+View(pc.result2$rotation)
+
+#Scree plot
+eigenvals2<-(pc.result2$sdev)^2
+eigenvals2
+
+par(mfrow=c(1,2))
+plot(eigenvals2,type="l",main="Scree Plot",ylab="Eigen Values",xlab="PC #")
+plot(eigenvals2/sum(eigenvals2),type="l",main="Scree Plot",ylab="Prop. Var. Explained",xlab="PC #",ylim=c(0,1))
+cumulative.prop<-cumsum(eigenvals2/sum(eigenvals2))
+lines(cumulative.prop,lty=2)
+legend("topleft", legend=c("Prop","Cumulative"),
+       lty=1:2, cex=0.8)
+
+
+data.frame(PC=1:length(eigenvals2),Prop=eigenvals2/sum(eigenvals2),Cumulative=cumulative.prop)
+
+# Calculate the variance explained by each principal component
+var_explained <- pc.result2$sdev^2 / sum(pc.result2$sdev^2)
+cum_var_explained <- cumsum(var_explained)
+
+# Find the number of components that explain at least 90% of the variance
+num_comp_90 <- which(cum_var_explained >= 0.9)[1]
+
+# Print the number of components
+print(num_comp_90) #We would need 4 to retain approximately 90%
+
+
+
+#Plotting PCA variables with the two colors:
+
+pc.result<-prcomp(df.numeric2[,-c(2,8,9)],scale.=TRUE)
+PC <- data.frame(diagnosis = train_data$y)
+PC$PC1 <- pc.result2$x[,1]
+PC$PC2 <- pc.result2$x[,2]
+PC$PC3 <- pc.result2$x[,3]
+PC$PC4 <- pc.result2$x[,4]
+ggpairs(PC[,-1],aes(color=PC[,1]))
+
+
+
+```
