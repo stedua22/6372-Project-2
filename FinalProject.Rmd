@@ -570,6 +570,50 @@ train_data_sorted %>% ggplot(aes(x=num, y=month, color=y)) + geom_jitter() +
 train_data_sorted %>% ggplot(aes(x=num, y=emp.var.rate, color=y)) + geom_jitter() + 
   xlab('Time') + ylab('Month') + ggtitle('Employment Variation Rate over Time')
 ```
+
+
+#### LOOKING AT THE PVALUE DISTRIBUTIONS
+Looking at how each variable in the model, significantly impacts our response variable
+```{r}
+log.model <-glm(y ~ . ,data = train_data,family="binomial")
+
+# Extract variable names
+variable_names <- rownames(summary(log.model)$coefficients)
+
+# Setting the levels back
+data$y <- relevel(data$y, ref="yes")
+
+# getting the  p-values from the model3
+p_values <- summary(log.model)$coefficients[, 4]  # Assuming p-values are in the 4th column of the summary table
+p_values <- data.frame(p_values)$p_values
+
+df <- data.frame(variable_names, p_values) #combining the pvalues and variable names into a dataframe
+
+df <- df[!df$p_value == 0 , ] #removing varaiables with pvalue = 0
+df$p_values <- log(df$p_values)  * -1
+
+barplot(df$p_values, 
+        main = "P-values of Regression Coefficients less than the significance level 0.05", 
+        xlab = "Variables", 
+        ylab = "P-value",
+        names.arg = df$variable_names,
+        las = 2,  # Rotate x-axis labels vertically for better readability
+        col = "steelblue",  # Set color of bars
+        ylim = c(exp(0.05) * -1, max(df$p_values) * 1.2)  # Set ylim from the significance level to the max p-values
+        
+)
+
+library(ggplot2)
+ggplot(df,aes(variable_names,p_values, fill = ifelse(p_values > (exp(0.05) * -1), "Positive", "Negative"))) + #filtering just the highly significant p-values
+  geom_bar(stat="identity", fill = "skyblue") + 
+  #geom_text(aes(label = variable_names), vjust = -0.5) +  # Add text labels on top of bars
+  scale_fill_manual(values = c("Positive" = "skyblue", "Negative" = "salmon")) +
+  labs(x = "Variables", y = "P-values", title = "P-values of Regression Coefficients less than the significance level 0.05") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))  # Rotate x-axis labels for better readability
+```
+From the plot above, we can see that the top 5 highly significant values with respoct to the response variable y are months(most of them), poutcome, emp.var.rate, contact, cons.price.idx, which are similar to our selected simple logistic model
+
+
 # PCA models
 
 ```{r}
@@ -854,10 +898,54 @@ Now that we have a model, we look at the model coefficients for interpretations.
 train_data$y <- relevel(train_data$y, ref="no")
 mod <- glm(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx, data = train_data, family = "binomial")
 summary(mod)
-exp(mod$coefficients)
-exp(confint(mod))
+odds_ratio <- exp(mod$coefficients)
+confident_interval <- exp(confint(mod))
 train_data$y <- relevel(train_data$y, ref="yes")
 ```
+Interpretations (interpreting individually):
+
+Monthapr
+The odds of getting the clients subscribing to a term deposit in the month of April is 0.255 times lower than that of  subscribing in the month of March with a CI of (0.204, 0.319)
+
+Monthmay
+The odds of getting the clients subscribing to a term deposit in the month of May is 0.152 times lower than that of  subscribing in the month of March with a CI of (0.123, 0.188)
+
+Monthjun
+The odds of getting the clients subscribing to a term deposit in the month of June is 0.229 times lower than that of  subscribing in the month of March with a CI of (0.182, 0.289).
+
+Monthjul
+The odds of getting the clients subscribing to a term deposit in the month of July is 0.359 times lower than that of  subscribing in the month of March with a CI of (0.285, 0.452).
+
+Monthaug
+The odds of getting the clients subscribing to a term deposit in the month of August is 0.500 times lower than that of  subscribing in the month of March with a CI of (0.399, 0.629)
+
+Monthsep
+The odds of getting the clients subscribing to a term deposit in the month of September is 0.362 times lower than that of  subscribing in the month of March with a CI of (0.273, 0.479)
+
+Monthoct
+The odds of getting the clients subscribing to a term deposit in the month of October is 0.356 times lower than that of  subscribing in the month of March with a CI of (0.272, 0.465)
+
+Monthnov
+The odds of getting the clients subscribing to a term deposit in the month of November is 0.236 times lower than that of  subscribing in the month of March with a CI of (0.187, 0.298)
+
+Monthdec
+The odds of getting the clients subscribing to a term deposit in the month of December is 0.574 times lower than that of  subscribing in the month of March with a CI of (0.380, 0.868)
+
+poutcomenonexistent
+The odds of getting the clients subscribing to a term deposit based on a nonexistent outcome of the previous campaign is 1.54 times higher than that of  a failed outcome with a CI of (1.37, 1.73)
+
+poutcomesuccess
+The odds of getting the clients subscribing to a term deposit based on a succesful outcome of the previous campaign is 6.17 times higher than that of  a failed outcome with a CI of (5.21, 7.31)
+
+emp.var.rate
+For every 1 unit increase in customer subscription to a term deposit, the odds of the customer subscribing based on the employment variation rate decreases by 56.2% with a CI of (58.1%, 54.3%)
+
+contacttelephone
+The odds of getting the clients subscribing to a term deposit based on the contact communication type is 0.647 times lower than that of subscribing by cell phone with a CI of (0.575, 0.728)
+
+cons,price.idx
+For every 1 unit increase in customer subscription to a term deposit, the odds of the customer subscribing based on the consumers price index increases by a factor of 3.14 with a CI of (2.82, 3.50)
+
 
 # Objective 2: Complex Logistic Regerssion Model
 For the second model, we looked into adding polynomial terms and/or interaction terms to the regression model.
@@ -1833,3 +1921,269 @@ plot(roc,print.thres="best",col="red")
 title(main = 'ROC Curve for QDA', line = 3)
 
 ```
+
+## RANDOM FOREST MODEL 1: SIMPLE LOGISTIC MODEL
+For our non-parametric model, we plan on using Random forest on our Simple Logistic Model. It is an ensemble learning method that combines the predictions of multiple individual decision trees to improve the overall performance and robustness of the model.
+
+#### SLM : CARET PACKAGE
+We plan on using the caret package, which iterates through different mtry and ntree values, to find the optimum one
+
+```{r}
+
+set.seed(1234) #setting the seed
+library(caret) # Loading the caret package
+
+# Running Random Forest
+# Specify the training control parameters
+train_control <- trainControl(method = "cv",    # Cross-validation method
+                              number = 5,)       # Number of folds
+
+# Define the random forest model
+fitted_rf <- train(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx, # formulae
+                  data = train_data,            # Response variable
+                  method = "rf",          # Random forest method
+                  trControl = train_control) # Training control parameters
+
+fitted_rf
+
+#plotting the importance plot
+plot(varImp(fitted_rf, horizontal = TRUE))
+
+```
+From the plot above, we can see that the 3 most impactful variables in the SLM are poutcome, emp.var.rate and cons.price.idx.
+
+
+#### Making predictions and getting the metrics
+```{r}
+# Getting the threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001)) 
+num_thresh <- nrow(metrics)
+
+#initializing the new metrics to 0
+metrics$sensitivity <- 0
+metrics$specificity <- 0
+metrics$ppv <- 0
+metrics$npv <- 0
+metrics$accuracy <- 0
+metrics$f1 <- 0
+predicted <- predict(fitted_rf, newdata = train_data, type = "prob")['yes']
+#Getting the threshold
+
+#Running a for loop to find the optimum threshold
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1  # 0.9468
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.608
+
+# Test data
+predicted <- predict(fitted_rf, newdata = test_data, type = "prob")['yes']
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+CM <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+CM
+
+#Printing out the metric
+Sensitivity <- CM$byClass["Sensitivity"]
+Specificity <- CM$byClass["Specificity"]
+Prevalence <- CM$byClass["Prevalence"]
+PPV <- CM$byClass["Pos Pred Value"]
+NPV <- CM$byClass["Neg Pred Value"]
+F1 <- (2 * Sensitivity * PPV)/(Sensitivity + PPV)
+F1_pred <- confusion_matrix$byClass['F1']
+
+#AUROC
+predicted_classes <- factor(predicted_classes, levels = c("yes", "no"))
+roc_rf <- roc(response=test_data$y,predictor= as.numeric(predicted_classes),levels=c("no","yes"),direction = ">")
+auroc <- auc(roc_rf)
+
+#printing merics
+cat("F1-pred: ", F1_pred, "\n") # 0.9400
+cat("Sensitivity: ", Sensitivity, "\n") #0.2393
+cat("Specificity: ", Specificity, "\n") #0.9829
+cat("Prevalence: ", Prevalence, "\n") #0.1106
+cat("PPV: ", PPV, "\n") #0.6356
+cat("NPV: ", NPV, "\n") #0.9122
+cat("AUROC: ", auroc, "\n") #0.6111
+
+```
+
+#### GETTING THE ROC CURVE
+```{r}
+
+# Print the AUROC
+auroc <- auc(roc_rf) # 0.6685
+
+plot(roc_rf,print.thres="best",col="red")
+title(main = 'ROC Curve for the Random Forest Model', line = 3)
+```
+The graphs looks different. It looks like the Random Forest model is confident of its predictions. Its most likely due to overfitting due to the high complexity of the Random Forest model.
+
+
+#### SLM : RANDOM FOREST PACKAGE
+Running the random forest again using the Random Forest Package this time. I am looking for the one to produce the best AUC value. For my hyperparameters, I chose mtry = 2 and ntree = 6000.
+```{r}
+set.seed(1234)
+library(randomForest)
+
+# Convert the binary outcome to a factor
+train_data$y <- as.factor(train_data$y)
+
+fitted_rf1.2 <-randomForest(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx, data=train_data, ntree=6000, importance = TRUE, keep.forest=TRUE, mtry=2)
+
+```
+
+
+#### Contribution plots from the Random Forest
+Looking at the contribution plots of our RF results to visualize the data to see which variables contributed the most
+
+```{r}
+#fitted_rf1.2 <-randomForest(y ~ month + poutcome + emp.var.rate + contact + cons.price.idx, data=train_data, ntree=6000, importance = TRUE, keep.forest=TRUE, mtry=2)
+
+importance_data <- as.data.frame(importance(fitted_rf1.2))
+
+plot_data <- data.frame(
+  Variable = row.names(importance_data),
+  no = importance_data$no,
+  yes = importance_data$yes,
+  accuracy = importance_data$MeanDecreaseAccuracy, #impact of each variable on the overall accuracy of the model
+  Impurity = importance_data$MeanDecreaseGini #  reduction in impurity (how well a variable separates the classes) achieved by each variable.
+)
+
+
+plot_data <- plot_data[order(plot_data$accuracy, decreasing = TRUE), ]
+
+# Make a contribution plot
+
+
+ggplot(plot_data, aes(x = Variable, y = accuracy)) +
+  geom_bar(stat = "identity", fill = "skyblue", width = 0.7) +
+  labs(title = "Accuracy Contribution Plot - Random Forest",
+       x = "Variable",
+       y = "accuracy") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(plot_data, aes(x = Variable, y = Impurity)) +
+  geom_bar(stat = "identity", fill = "skyblue", width = 0.7) +
+  labs(title = "Impurity Contribution Plot - Random Forest",
+       x = "Variable",
+       y = "Impurity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+Based on the contribution plot, there is evidence that the 3 most influential variables within the dataset are Poutcome, cons.price.idx & emp.var.rate, which is similar to the previous caret package.
+
+#### Making predictions and getting the metrics
+```{r}
+# Get threshold
+metrics = data.frame(thresh=seq(0, 1, by = 0.0001))
+num_thresh <- nrow(metrics)
+metrics$sensitivity <- 0
+metrics$specificity <- 0
+metrics$ppv <- 0
+metrics$npv <- 0
+metrics$accuracy <- 0
+metrics$f1 <- 0
+predicted <- data.frame(predict(fitted_rf1.2, newdata = train_data, type = "prob"))['yes']
+#Getting the threshold
+for (i in 1:num_thresh){
+  if(i %% 100 == 0) {
+    print(paste(i,'/',num_thresh,sep=''))
+  }
+  
+  # Confusion Matrix
+  predicted_classes <- ifelse(predicted[, "yes"] > metrics$thresh[i], 'yes', 'no')
+  predicted_classes_factor <- factor(predicted_classes, levels = levels(train_data$y))
+  confusion_matrix <- confusionMatrix(predicted_classes_factor, train_data$y)
+  
+  
+  # Metrics
+  metrics$sensitivity[i] <- as.numeric(confusion_matrix$byClass['Sensitivity'])
+  metrics$specificity[i] <- as.numeric(confusion_matrix$byClass['Specificity'])
+  metrics$ppv[i] <- as.numeric(confusion_matrix$byClass['Pos Pred Value'])
+  metrics$npv[i] <- as.numeric(confusion_matrix$byClass['Neg Pred Value'])
+  metrics$accuracy[i] <- as.numeric(confusion_matrix$overall['Accuracy'])
+  metrics$f1[i] <- as.numeric(confusion_matrix$byClass['F1'])
+}
+
+# Get threshold value that maximizes F1
+# Get F1 thresholds
+maxF1 <- max(metrics$f1, na.rm = TRUE) # 
+maxF1  #0.9468
+theshF1 <- metrics$thresh[which.max(metrics$f1)] 
+theshF1 # 0.4957
+
+# Test data
+predicted <- data.frame(predict(fitted_rf1.2, newdata = test_data, type = "prob"))[2]
+predicted_classes <- ifelse(predicted[, "yes"] >  theshF1, 'yes', 'no')
+CM <- confusionMatrix(as.factor(predicted_classes), as.factor(test_data$y))
+CM
+
+#Printing out the metric
+Sensitivity <- CM$byClass["Sensitivity"]
+Specificity <- CM$byClass["Specificity"]
+Prevalence <- CM$byClass["Prevalence"]
+PPV <- CM$byClass["Pos Pred Value"]
+NPV <- CM$byClass["Neg Pred Value"]
+F1_pred <- confusion_matrix$byClass['F1']
+
+#AUROC
+predicted_classes <- factor(predicted_classes, levels = c("yes", "no"))
+roc_rf <- roc(response=test_data$y,predictor= as.numeric(predicted_classes),levels=c("no","yes"),direction = ">")
+auroc <- auc(roc_rf)
+
+
+cat("F1-pred: ", F1_pred, "\n")
+cat("Sensitivity: ", Sensitivity, "\n") 
+cat("Specificity: ", Specificity, "\n") 
+cat("Prevalence: ", Prevalence, "\n") 
+cat("PPV: ", PPV, "\n")
+cat("NPV: ", NPV, "\n")
+cat("AUROC: ", auroc, "\n")
+
+# Results:
+# F1-pred:  0.9400203 
+# Sensitivity:  0.2447859 
+# Specificity:  0.9826668 
+# Prevalence:  0.1105851 
+# PPV:  0.6371429 
+# NPV:  0.9127789 
+# AUROC:  0.6137264 
+
+
+```
+
+The RF model for the randomForest package is greater than the caret package by 0.5%. Hence i will go ahead with this model
+
+#### GETTING THE ROC CURVE
+```{r}
+
+# Print the AUROC
+auroc <- auc(roc_rf) # 0.7044
+
+plot(roc_rf,print.thres="best",col="red")
+title(main = 'ROC Curve for the Random Forest Model', line = 3)
+```
+The ROC curve is is similar to the previous model. Hence i can infer that this is the roc curve of what a random forest model would predict. Most likely due to the complexity.
